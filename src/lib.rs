@@ -1,3 +1,83 @@
+//! # g2h: gRPC to HTTP Bridge Generator
+//!
+//! `g2h` automatically generates Axum HTTP/JSON endpoints from your gRPC service definitions,
+//! allowing a single service implementation to be exposed through both gRPC and REST interfaces.
+//!
+//! ## Overview
+//!
+//! Modern APIs often need to support multiple protocols to accommodate different clients:
+//! - **gRPC** provides excellent performance and type safety for service-to-service communication
+//! - **HTTP/JSON** remains the standard for web browsers and many client applications
+//!
+//! Rather than maintaining separate implementations, `g2h` lets you:
+//! - Define your API once using Protocol Buffers
+//! - Implement your service logic once using Tonic
+//! - Automatically expose both gRPC and HTTP/JSON endpoints
+//!
+//! ## Features
+//!
+//! - **Zero-boilerplate API exposure** - Automatically generate HTTP endpoints from gRPC services
+//! - **Protocol conversion** - Transparent conversion between gRPC and HTTP/JSON formats
+//! - **Metadata preservation** - Headers and metadata are properly mapped between protocols
+//! - **Error handling** - gRPC status codes are correctly translated to HTTP status codes
+//! - **Axum integration** - Generated code uses Axum, a modern Rust web framework
+//! - **Type safety** - Leverages Rust's type system for safe request/response handling
+//!
+//! ## Quick Start
+//!
+//! ```rust,no_run
+//! // build.rs
+//! use g2h::BridgeGenerator;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Simple approach with default settings
+//!     BridgeGenerator::with_tonic_build()
+//!         .build_prost_config()
+//!         .compile_protos(&["proto/service.proto"], &["proto"])?;
+//!     
+//!     Ok(())
+//! }
+//! ```
+//!
+//! In your service code:
+//!
+//! ```rust,no_run
+//! use axum::Router;
+//!
+//! // Import the generated code
+//! pub mod service {
+//!     include!(concat!(env!("OUT_DIR"), "/my_package.service.rs"));
+//! }
+//!
+//! // Get the HTTP router function that was generated for your service
+//! use service::my_service_handler;
+//!
+//! // Create your service instance
+//! let my_service = MyServiceImpl::default();
+//!
+//! // Create your Axum router
+//! let http_router = my_service_handler(my_service);
+//!
+//! // Use it in your Axum application
+//! let app = Router::new().nest("/api", http_router);
+//! ```
+//!
+//! Each gRPC method is now accessible via an HTTP endpoint with the pattern:
+//! `POST /{package}.{ServiceName}/{MethodName}`
+//!
+//! ## How It Works
+//!
+//! `g2h` extends the standard gRPC code generation pipeline by implementing
+//! `prost_build::ServiceGenerator`. For each gRPC service:
+//!
+//! 1. It generates an Axum router function that creates a POST route for each service method
+//! 2. Requests are automatically converted between JSON and Protocol Buffers
+//! 3. HTTP headers are mapped to gRPC metadata and vice versa
+//! 4. Error status codes are properly translated between protocols
+//!
+//! This allows your service implementation to be called seamlessly through
+//! either protocol without any additional code.
+
 use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
