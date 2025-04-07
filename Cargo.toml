@@ -1,7 +1,25 @@
 [package]
 name = "g2h"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Nishant Joshi"]
+description = "A code generator that bridges gRPC services to HTTP/JSON endpoints using Axum"
+documentation = "https://docs.rs/g2h"
+repository = "https://github.com/nishantjoshi00/g2h"
+homepage = "https://github.com/nishantjoshi00/g2h"
+license-file = "LICENSE"
+readme = "README.md"
+keywords = ["grpc", "http", "axum", "codegen", "api"]
+categories = ["web-programming", "network-programming", "api-bindings", "development-tools::build-utils"]
+
+# Exclude unnecessary files from crates.io package
+exclude = [
+    "/.github",
+    "/.gitignore",
+    "*.png",
+]
+
+rust-version = "1.78.0"
 
 [features]
 default = ["doc"]
