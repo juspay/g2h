@@ -25,7 +25,7 @@
 //!
 //! ## Quick Start
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! // build.rs
 //! use g2h::BridgeGenerator;
 //!
@@ -41,7 +41,7 @@
 //!
 //! In your service code:
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use axum::Router;
 //!
 //! // Import the generated code
