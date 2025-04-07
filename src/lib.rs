@@ -100,7 +100,7 @@ impl BridgeGenerator {
         config
     }
 
-    /// 
+    ///
     /// Creates a new `BridgeGenerator` instance with the default Tonic service generator.
     ///
     /// It's a shorthand for `BridgeGenerator::new(tonic_build::configure().service_generator())`.
