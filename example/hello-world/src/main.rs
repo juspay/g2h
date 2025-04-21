@@ -21,6 +21,8 @@ impl hello_world::greeter_server::Greeter for Server {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+
     let router = hello_world::greeter_handler(Server);
 
     let sample_request = serde_json::json!({

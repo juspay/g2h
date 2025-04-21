@@ -78,9 +78,19 @@
 //! This allows your service implementation to be called seamlessly through
 //! either protocol without any additional code.
 
+#[cfg(feature = "validate")]
+mod ver {
+    pub const AXUM_VERSION: &str = "0.8.3";
+    pub const TONIC_VERSION: &str = "0.13.0";
+    pub const HTTP_VERSION: &str = "1.3.1";
+}
+
 use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
+
+#[cfg(feature = "validate")]
+pub(crate) mod vercheck;
 
 /// A service generator that creates web endpoints for gRPC services using Axum.
 ///
@@ -153,6 +163,16 @@ impl BridgeGenerator {
     /// ```
     ///
     pub fn new(inner: Box<dyn ServiceGenerator>) -> Self {
+        #[cfg(feature = "validate")]
+        {
+            let output =
+                vercheck::Deps::new(ver::AXUM_VERSION, ver::TONIC_VERSION, ver::HTTP_VERSION)
+                    .and_then(vercheck::Deps::validate);
+            if let Err(err) = output {
+                eprintln!("g2h: {err}");
+            }
+        }
+
         Self { inner }
     }
 
@@ -163,6 +183,7 @@ impl BridgeGenerator {
     /// # Example
     ///
     /// ```rust
+    ///
     /// use g2h::BridgeGenerator;
     /// use prost_build::Config;
     ///
@@ -186,9 +207,7 @@ impl BridgeGenerator {
     /// It's a shorthand for `BridgeGenerator::new(tonic_build::configure().service_generator())`.
     ///
     pub fn with_tonic_build() -> Self {
-        Self {
-            inner: tonic_build::configure().service_generator(),
-        }
+        Self::new(tonic_build::configure().service_generator())
     }
 }
 
