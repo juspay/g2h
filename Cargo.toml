@@ -1,6 +1,6 @@
 [package]
 name = "g2h"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["Nishant Joshi"]
 description = "A code generator that bridges gRPC services to HTTP/JSON endpoints using Axum"

@@ -246,6 +246,7 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
         let docs = quote! {};
 
         let output = quote! {
+            #[allow(dead_code)]
             #docs
             pub fn #service_name<T: #server_module::#ident_func_name>(server: T) -> ::axum::Router {
                 use ::axum::extract::State;
@@ -270,7 +271,7 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
                                 (headers, extension, body).into_response()
                             },
                             Err(status) => {
-                                let (parts, body) = status.into_http().into_parts();
+                                let (parts, body) = status.into_http::<::axum::body::Body>().into_parts();
 
                                 ::http::response::Response::from_parts(parts, ::axum::body::Body::new(body))
                             }
