@@ -46,9 +46,9 @@ use g2h::BridgeGenerator;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     
-    // Simple approach with default settings
+    // Simple approach with string enum support
     BridgeGenerator::with_tonic_build()
-        .build_prost_config()
+        .with_string_enums()
         .compile_protos(&["proto/user_service.proto"], &["proto"])?;
     
     // Alternative approach with more control
@@ -177,6 +177,82 @@ Content-Type: application/json
 ```
 
 ## Advanced Configurations
+
+### String Enum Support (Feature Flag)
+
+When the `string-enums` feature is enabled, g2h can automatically detect enum fields and allow HTTP clients to send string values instead of integer enum values:
+
+```toml
+# In your Cargo.toml
+[build-dependencies]
+g2h = { version = "0.3", features = ["string-enums"] }
+prost-types = "0.13.5"
+```
+
+```rust
+// In your build.rs
+use g2h::BridgeGenerator;
+use prost_types::FileDescriptorSet;
+use std::env;
+use std::path::PathBuf;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+    
+    // First compile to get descriptors
+    let mut temp_config = prost_build::Config::new();
+    temp_config.file_descriptor_set_path(out_dir.join("temp_descriptors.bin"));
+    temp_config.compile_protos(&["proto/user_service.proto"], &["proto"])?;
+    
+    // Read the descriptors
+    let descriptor_bytes = std::fs::read(out_dir.join("temp_descriptors.bin"))?;
+    let file_descriptor_set = FileDescriptorSet::decode(&*descriptor_bytes)?;
+    
+    // Generate enum deserializer code
+    let enum_config = BridgeGenerator::with_tonic_build()
+        .with_string_enums()
+        .build_enum_config();
+        
+    let deserializer_code = enum_config.generate_enum_deserializer_code(&file_descriptor_set);
+    std::fs::write(out_dir.join("enum_deserializer.rs"), deserializer_code)?;
+    
+    // Build final config with automatic enum detection
+    enum_config
+        .build_prost_config_with_descriptors(&file_descriptor_set)
+        .compile_protos(&["proto/user_service.proto"], &["proto"])?;
+    
+    Ok(())
+}
+```
+
+Then include the generated deserializer code in your lib.rs:
+
+```rust
+// Include the auto-generated enum deserializer functions
+include!(concat!(env!("OUT_DIR"), "/enum_deserializer.rs"));
+
+pub mod user_service {
+    include!(concat!(env!("OUT_DIR"), "/user.v1.rs"));
+}
+```
+
+This allows HTTP clients to send requests like:
+
+```json
+{
+  "status": "ACTIVE",        // String format instead of integer
+  "user_type": "PREMIUM"     // String format instead of integer
+}
+```
+
+Instead of requiring integer enum values:
+
+```json
+{
+  "status": 1,               // Integer format
+  "user_type": 2             // Integer format
+}
+```
 
 ### Custom Path Prefixes
 

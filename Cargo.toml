@@ -10,14 +10,15 @@ homepage = "https://github.com/nishantjoshi00/g2h"
 license-file = "LICENSE"
 readme = "README.md"
 keywords = ["grpc", "http", "axum", "codegen", "api"]
-categories = ["web-programming", "network-programming", "api-bindings", "development-tools::build-utils"]
+categories = [
+    "web-programming",
+    "network-programming",
+    "api-bindings",
+    "development-tools::build-utils",
+]
 
 # Exclude unnecessary files from crates.io package
-exclude = [
-    "/.github",
-    "/.gitignore",
-    "*.png",
-]
+exclude = ["/.github", "/.gitignore", "*.png"]
 
 rust-version = "1.78.0"
 
@@ -29,7 +30,10 @@ doc = []
 [dependencies]
 tonic-build = "0.13.0"
 prost-build = "0.13.5"
+prost-types = "0.13.5"
+prost = "0.13.5"
 quote = "1.0.40"
+proc-macro2 = "1.0"
 heck = "0.5.0"
 
 cargo_metadata = "0.19.2"

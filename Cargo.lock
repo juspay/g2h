@@ -107,7 +107,10 @@ version = "0.3.1"
 dependencies = [
  "cargo_metadata",
  "heck",
+ "proc-macro2",
+ "prost",
  "prost-build",
+ "prost-types",
  "quote",
  "thiserror",
  "tonic-build",
