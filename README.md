@@ -15,6 +15,7 @@
 - 🔌 Works with existing Tonic services with zero modification
 - 🧠 Preserves metadata and headers between protocols
 - 🚦 Proper error status conversion from gRPC to HTTP
+- ✨ **NEW**: Automatic string enum support for HTTP endpoints (feature flag)
 
 ## Quick Start
 
@@ -77,6 +78,36 @@ For complete usage examples and API documentation:
 ## How It Works
 
 `g2h` extends the standard gRPC code generation pipeline to create additional Axum router functions. These routers map HTTP POST requests to their corresponding gRPC methods, handling serialization/deserialization and status code conversion automatically.
+
+## String Enum Support
+
+Enable automatic string enum deserialization for more user-friendly HTTP APIs:
+
+```toml
+[build-dependencies]
+g2h = { version = "0.3", features = ["string-enums"] }
+prost-types = "0.13.5"
+```
+
+```rust
+// build.rs with string enum support
+use g2h::BridgeGenerator;
+
+BridgeGenerator::with_tonic_build()
+    .with_string_enums()  // Enable automatic enum string support
+    .build_prost_config()
+    .compile_protos(&["proto/service.proto"], &["proto"])?;
+```
+
+Now your HTTP endpoints accept both string and integer enum values:
+
+```json
+// ✅ Both formats work
+{
+  "status": "ACTIVE",        // String format (user-friendly)
+  "priority": 1              // Integer format (still supported)
+}
+```
 
 ## License
 

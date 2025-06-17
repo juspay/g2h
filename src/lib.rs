@@ -89,6 +89,14 @@ use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
 
+#[cfg(feature = "string-enums")]
+use prost_types::{
+    FileDescriptorSet, FileDescriptorProto, DescriptorProto, 
+    FieldDescriptorProto, field_descriptor_proto::{Type, Label}
+};
+
+#[cfg(feature = "string-enums")]
+
 #[cfg(feature = "validate")]
 pub(crate) mod vercheck;
 
@@ -146,6 +154,10 @@ pub struct BridgeGenerator {
     /// The inner generator that handles the base gRPC code generation.
     /// This is typically the default Tonic generator.
     inner: Box<dyn ServiceGenerator>,
+    
+    #[cfg(feature = "string-enums")]
+    /// Whether to enable automatic string enum deserialization
+    enable_string_enums: bool,
 }
 
 impl BridgeGenerator {
@@ -173,7 +185,11 @@ impl BridgeGenerator {
             }
         }
 
-        Self { inner }
+        Self { 
+            inner,
+            #[cfg(feature = "string-enums")]
+            enable_string_enums: false,
+        }
     }
 
     ///
@@ -201,6 +217,34 @@ impl BridgeGenerator {
         config
     }
 
+    #[cfg(feature = "string-enums")]
+    ///
+    /// Creates an EnumConfig instance for advanced enum configuration.
+    ///
+    /// This method returns an `EnumConfig` that can build a `prost_build::Config`
+    /// with automatic enum field detection when the `string-enums` feature is enabled.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    /// use prost_types::FileDescriptorSet;
+    ///
+    /// // First compile to get descriptors
+    /// let file_descriptor_set = compile_and_get_descriptors()?;
+    ///
+    /// // Then build config with automatic enum detection
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .build_enum_config()
+    ///     .build_prost_config_with_descriptors(&file_descriptor_set)
+    ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
+    /// ```
+    ///
+    pub fn build_enum_config(self) -> EnumConfig {
+        EnumConfig::new(self)
+    }
+
     ///
     /// Creates a new `BridgeGenerator` instance with the default Tonic service generator.
     ///
@@ -209,6 +253,403 @@ impl BridgeGenerator {
     pub fn with_tonic_build() -> Self {
         Self::new(tonic_build::configure().service_generator())
     }
+
+    #[cfg(feature = "string-enums")]
+    ///
+    /// Enable automatic string enum deserialization for HTTP endpoints.
+    ///
+    /// When enabled, enum fields in protobuf messages can accept both string values
+    /// (e.g., "USD", "EUR") and integer values (e.g., 1, 2) in JSON requests.
+    /// The generator will automatically detect enum fields and add appropriate
+    /// serde deserializers.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .build_prost_config()
+    ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
+    /// ```
+    ///
+    /// This allows HTTP clients to send requests like:
+    /// ```json
+    /// {
+    ///   "currency": "USD",        // String format
+    ///   "payment_method": "CARD"  // String format
+    /// }
+    /// ```
+    ///
+    /// Instead of requiring integer enum values:
+    /// ```json
+    /// {
+    ///   "currency": 1,           // Integer format
+    ///   "payment_method": 0      // Integer format
+    /// }
+    /// ```
+    ///
+    pub fn with_string_enums(mut self) -> Self {
+        self.enable_string_enums = true;
+        self
+    }
+}
+
+#[cfg(feature = "string-enums")]
+/// Configuration helper for building prost config with automatic enum detection
+pub struct EnumConfig {
+    generator: BridgeGenerator,
+}
+
+#[cfg(feature = "string-enums")]
+impl EnumConfig {
+    /// Create a new EnumConfig from a BridgeGenerator
+    pub fn new(generator: BridgeGenerator) -> Self {
+        Self { generator }
+    }
+
+    /// Build prost config with automatic enum field detection and deserializers
+    pub fn build_prost_config_with_descriptors(
+        self,
+        file_descriptor_set: &FileDescriptorSet,
+    ) -> prost_build::Config {
+        let enable_string_enums = self.generator.enable_string_enums;
+        let mut config = self.generator.build_prost_config();
+        
+        if enable_string_enums {
+            config = Self::add_enum_string_support_static(config, file_descriptor_set);
+        }
+        
+        config
+    }
+
+    /// Add enum string support by detecting enum fields automatically (static version)
+    fn add_enum_string_support_static(
+        mut config: prost_build::Config,
+        file_descriptor_set: &FileDescriptorSet,
+    ) -> prost_build::Config {
+        for file in &file_descriptor_set.file {
+            config = Self::process_file_descriptor_static(config, file);
+        }
+        config
+    }
+
+    fn process_file_descriptor_static(
+        mut config: prost_build::Config,
+        file: &FileDescriptorProto,
+    ) -> prost_build::Config {
+        // Process all message types in the file
+        for message in &file.message_type {
+            let package = file.package();
+            config = Self::process_message_descriptor_static(config, message, package);
+        }
+        config
+    }
+
+    fn process_message_descriptor_static(
+        mut config: prost_build::Config,
+        message: &DescriptorProto,
+        package: &str,
+    ) -> prost_build::Config {
+        let message_name = message.name();
+        
+        // Process all fields in the message
+        for field in &message.field {
+            if Self::is_enum_field_static(field) {
+                config = Self::add_enum_deserializer_static(config, message_name, field);
+            }
+        }
+        
+        // Recursively process nested message types
+        for nested_message in &message.nested_type {
+            config = Self::process_message_descriptor_static(config, nested_message, package);
+        }
+        
+        config
+    }
+
+    fn is_enum_field_static(field: &FieldDescriptorProto) -> bool {
+        // Check if the field type is an enum
+        field.r#type() == Type::Enum
+    }
+
+    fn add_enum_deserializer_static(
+        mut config: prost_build::Config,
+        message_name: &str,
+        field: &FieldDescriptorProto,
+    ) -> prost_build::Config {
+        let field_path = format!("{}.{}", message_name, field.name());
+        
+        let serde_attribute = match Self::get_field_label_static(field) {
+            FieldLabel::Optional => {
+                // For optional fields, check if prost would generate Option<T> or just T with default
+                if field.proto3_optional() {
+                    "#[serde(deserialize_with = \"crate::deserialize_option_enum_from_string\", default)]"
+                } else {
+                    // In proto3, scalar types have implicit defaults, so use regular deserializer
+                    "#[serde(deserialize_with = \"crate::deserialize_enum_from_string\", default)]"
+                }
+            },
+            FieldLabel::Required => "#[serde(deserialize_with = \"crate::deserialize_enum_from_string\")]",
+            FieldLabel::Repeated => "#[serde(deserialize_with = \"crate::deserialize_repeated_enum_from_string\", default)]",
+        };
+        
+        config.field_attribute(&field_path, serde_attribute);
+        config
+    }
+
+    fn get_field_label_static(field: &FieldDescriptorProto) -> FieldLabel {
+        match field.label() {
+            Label::Optional => FieldLabel::Optional,
+            Label::Required => FieldLabel::Required,
+            Label::Repeated => FieldLabel::Repeated,
+        }
+    }
+
+    /// Generate enum deserializer code that can be included in the generated crate
+    pub fn generate_enum_deserializer_code(
+        &self,
+        file_descriptor_set: &FileDescriptorSet,
+    ) -> String {
+        Self::generate_enum_deserializer_code_static(file_descriptor_set)
+    }
+    
+    /// Static version for generating enum deserializer code
+    pub fn generate_enum_deserializer_code_static(
+        file_descriptor_set: &FileDescriptorSet,
+    ) -> String {
+        let enum_types = Self::extract_all_enum_types_static(file_descriptor_set);
+        
+        format!(
+            r#"
+// Auto-generated enum deserializer functions
+
+{}
+
+{}
+
+{}
+
+{}
+"#,
+            Self::generate_enum_list_macro_static(&enum_types),
+            Self::generate_single_enum_deserializer_static(),
+            Self::generate_option_enum_deserializer_static(),
+            Self::generate_repeated_enum_deserializer_static()
+        )
+    }
+
+    fn extract_all_enum_types_static(file_descriptor_set: &FileDescriptorSet) -> Vec<String> {
+        let mut enum_types = Vec::new();
+        
+        for file in &file_descriptor_set.file {
+            let package = file.package();
+            
+            // Map protobuf package names to actual Rust module paths
+            let module_path = match package {
+                "hello_world" => "crate::hello_world::".to_string(),
+                "ucs.payments" => "crate::payments::".to_string(),
+                "grpc.health.v1" => "crate::health_check::".to_string(),
+                _ => {
+                    // For other packages, convert dots to double colons and add crate:: prefix
+                    if package.is_empty() {
+                        "crate::".to_string()
+                    } else {
+                        format!("crate::{}::", package.replace('.', "::"))
+                    }
+                }
+            };
+            
+            // Top-level enums
+            for enum_desc in &file.enum_type {
+                let enum_name = enum_desc.name();
+                enum_types.push(format!("{}{}", module_path, enum_name));
+            }
+            
+            // Enums in messages (recursive)
+            for message in &file.message_type {
+                enum_types.extend(Self::extract_nested_enums_static(message, &module_path));
+            }
+        }
+        
+        enum_types
+    }
+
+    fn extract_nested_enums_static(message: &DescriptorProto, module_path: &str) -> Vec<String> {
+        let mut enum_types = Vec::new();
+        let message_name = message.name();
+        
+        // Convert message name to snake_case for module path (prost convention)
+        let message_module = Self::to_snake_case(message_name);
+        
+        // Enums directly in this message
+        for enum_desc in &message.enum_type {
+            let enum_name = enum_desc.name();
+            enum_types.push(format!("{}{}::{}", module_path, message_module, enum_name));
+        }
+        
+        // Recursively check nested messages
+        for nested_message in &message.nested_type {
+            let nested_path = format!("{}{}::", module_path, message_module);
+            enum_types.extend(Self::extract_nested_enums_static(nested_message, &nested_path));
+        }
+        
+        enum_types
+    }
+
+    fn to_snake_case(input: &str) -> String {
+        let mut result = String::new();
+        let mut chars = input.chars().peekable();
+        
+        while let Some(c) = chars.next() {
+            if c.is_uppercase() {
+                if !result.is_empty() {
+                    result.push('_');
+                }
+                result.push(c.to_lowercase().next().unwrap());
+            } else {
+                result.push(c);
+            }
+        }
+        
+        result
+    }
+
+    fn generate_enum_list_macro_static(enum_types: &[String]) -> String {
+        format!(
+            r#"
+macro_rules! try_parse_all_enums {{
+    ($s:expr) => {{
+        {{
+            // Try each enum type
+            {}
+            
+            None
+        }}
+    }};
+}}
+"#,
+            enum_types.iter()
+                .map(|enum_type| format!(
+                    "if let Some(val) = {}::from_str_name($s) {{ return Some(val as i32); }}", 
+                    enum_type
+                ))
+                .collect::<Vec<_>>()
+                .join("\n            ")
+        )
+    }
+
+    fn generate_single_enum_deserializer_static() -> &'static str {
+        r#"
+pub fn deserialize_enum_from_string<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum EnumOrString {
+        String(String),
+        Int(i32),
+    }
+    
+    match EnumOrString::deserialize(deserializer)? {
+        EnumOrString::String(s) => {
+            fn try_parse_enum(s: &str) -> Option<i32> {
+                try_parse_all_enums!(s)
+            }
+            try_parse_enum(&s).ok_or_else(|| {
+                serde::de::Error::custom(format!("Unknown enum value: {}", s))
+            })
+        }
+        EnumOrString::Int(i) => Ok(i),
+    }
+}
+"#
+    }
+
+    fn generate_option_enum_deserializer_static() -> &'static str {
+        r#"
+pub fn deserialize_option_enum_from_string<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OptionalEnumOrString {
+        String(String),
+        Int(i32),
+        None,
+    }
+    
+    match Option::<OptionalEnumOrString>::deserialize(deserializer)? {
+        Some(OptionalEnumOrString::String(s)) => {
+            fn try_parse_enum(s: &str) -> Option<i32> {
+                try_parse_all_enums!(s)
+            }
+            try_parse_enum(&s)
+                .map(Some)
+                .ok_or_else(|| serde::de::Error::custom(format!("Unknown enum value: {}", s)))
+        }
+        Some(OptionalEnumOrString::Int(i)) => Ok(Some(i)),
+        Some(OptionalEnumOrString::None) | None => Ok(None),
+    }
+}
+"#
+    }
+
+    fn generate_repeated_enum_deserializer_static() -> &'static str {
+        r#"
+pub fn deserialize_repeated_enum_from_string<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum EnumOrStringItem {
+        String(String),
+        Int(i32),
+    }
+    
+    let items: Vec<EnumOrStringItem> = Vec::deserialize(deserializer)?;
+    let mut result = Vec::with_capacity(items.len());
+    
+    for item in items {
+        match item {
+            EnumOrStringItem::String(s) => {
+                fn try_parse_enum(s: &str) -> Option<i32> {
+                    try_parse_all_enums!(s)
+                }
+                if let Some(enum_val) = try_parse_enum(&s) {
+                    result.push(enum_val);
+                } else {
+                    return Err(serde::de::Error::custom(format!("Unknown enum value: {}", s)));
+                }
+            }
+            EnumOrStringItem::Int(i) => {
+                result.push(i);
+            }
+        }
+    }
+    
+    Ok(result)
+}
+"#
+    }
+}
+
+#[cfg(feature = "string-enums")]
+#[derive(Debug)]
+enum FieldLabel {
+    Optional,
+    Required, 
+    Repeated,
 }
 
 impl prost_build::ServiceGenerator for BridgeGenerator {

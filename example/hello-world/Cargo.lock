@@ -270,11 +270,12 @@ dependencies = [
 
 [[package]]
 name = "g2h"
-version = "0.2.0"
+version = "0.3.1"
 dependencies = [
  "cargo_metadata",
  "heck",
  "prost-build",
+ "prost-types",
  "quote",
  "thiserror",
  "tonic-build",
@@ -338,6 +339,7 @@ dependencies = [
  "http",
  "prost",
  "prost-build",
+ "prost-types",
  "serde",
  "serde_json",
  "tokio",

@@ -1,7 +1,11 @@
 [package]
 name = "hello-world"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[features]
+default = []
+string-enums = []
 
 
 [dependencies]
@@ -15,6 +19,8 @@ tower = "0.5.2"
 tokio = { version = "1.44.2", features = ["full"] }
 
 [build-dependencies]
-g2h = { path = "../../" }
+g2h = { path = "../../", features = ["string-enums"] }
 tonic-build = "0.13.0"
 prost-build = "0.13.5"
+prost = "0.13.5"
+prost-types = "0.13.5"

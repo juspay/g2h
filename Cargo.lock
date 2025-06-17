@@ -108,6 +108,7 @@ dependencies = [
  "cargo_metadata",
  "heck",
  "prost-build",
+ "prost-types",
  "quote",
  "thiserror",
  "tonic-build",

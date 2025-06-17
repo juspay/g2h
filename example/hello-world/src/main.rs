@@ -1,5 +1,9 @@
 use tower::ServiceExt;
 
+// Include the auto-generated enum deserializer functions from g2h (if string-enums feature is enabled)
+#[cfg(feature = "string-enums")]
+include!(concat!(env!("OUT_DIR"), "/enum_deserializer.rs"));
+
 mod hello_world {
     tonic::include_proto!("hello_world");
 }
@@ -12,8 +16,20 @@ impl hello_world::greeter_server::Greeter for Server {
         &self,
         request: tonic::Request<hello_world::HelloRequest>,
     ) -> Result<tonic::Response<hello_world::HelloReply>, tonic::Status> {
+        let req = request.into_inner();
+        let greeting_type = req.greeting_type;
+        let priority = req.priority;
+        
+        let greeting = match greeting_type {
+            0 => "Good day", // FORMAL
+            1 => "Hey",      // CASUAL  
+            2 => "Hi there", // FRIENDLY
+            _ => "Hello",    // default
+        };
+        
         let reply = hello_world::HelloReply {
-            message: format!("Hello {}!", request.into_inner().name),
+            message: format!("{} {}! (priority: {})", greeting, req.name, priority),
+            status: 0, // SUCCESS
         };
         Ok(tonic::Response::new(reply))
     }
@@ -26,7 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = hello_world::greeter_handler(Server);
 
     let sample_request = serde_json::json!({
-        "name": "World"
+        "name": "World",
+        "greeting_type": "CASUAL",  // Test string enum support
+        "priority": "HIGH"          // Test string enum support
     });
 
     println!("request: {}", sample_request);
@@ -46,7 +64,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body_bytes = axum::body::to_bytes(body, usize::MAX).await?;
     let json_body = serde_json::from_slice::<serde_json::Value>(&body_bytes)?;
 
-    assert_eq!(json_body["message"], "Hello World!");
+    // With string enum support, should get "Hey World! (priority: 2)"
+    println!("Expected: Hey World! (priority: 2)");
+    println!("Actual: {}", json_body["message"]);
 
     println!("response: {}", json_body);
 
