@@ -30,9 +30,9 @@
 //! use g2h::BridgeGenerator;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Simple approach with default settings
+//!     // Simple approach with string enum support
 //!     BridgeGenerator::with_tonic_build()
-//!         .build_prost_config()
+//!         .with_string_enums()
 //!         .compile_protos(&["proto/service.proto"], &["proto"])?;
 //!     
 //!     Ok(())
@@ -195,17 +195,17 @@ impl BridgeGenerator {
     /// Creates a new `prost_build::Config` instance with the service generator set to this
     /// `BridgeGenerator`.
     ///
+    /// Note: For string enum support, use `compile_protos()` instead, which handles
+    /// the configuration automatically.
+    ///
     /// # Example
     ///
     /// ```rust
-    ///
     /// use g2h::BridgeGenerator;
-    /// use prost_build::Config;
     ///
-    /// BridgeGenerator::with_tonic_build()                         // create the service generator
-    ///    .build_prost_config()                                    // convert to `prost_build::Config`
-    ///    .compile_protos(&["path/to/your.proto"], &["path/to/your/include"]); // compile the proto files
-    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///    .build_prost_config()
+    ///    .compile_protos(&["path/to/your.proto"], &["path/to/your/include"]);
     /// ```
     ///
     pub fn build_prost_config(self) -> prost_build::Config {
@@ -258,24 +258,10 @@ impl BridgeGenerator {
     /// Creates an EnumConfig instance for advanced enum configuration.
     ///
     /// This method returns an `EnumConfig` that can build a `prost_build::Config`
-    /// with automatic enum field detection when the `string-enums` feature is enabled.
+    /// with automatic enum field detection when string enums are enabled.
     ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use g2h::BridgeGenerator;
-    /// use prost_types::FileDescriptorSet;
-    ///
-    /// // First compile to get descriptors
-    /// let file_descriptor_set = compile_and_get_descriptors()?;
-    ///
-    /// // Then build config with automatic enum detection
-    /// BridgeGenerator::with_tonic_build()
-    ///     .with_string_enums()
-    ///     .build_enum_config()
-    ///     .build_prost_config_with_descriptors(&file_descriptor_set)
-    ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
-    /// ```
+    /// Note: Most users should use the simpler `compile_protos()` method instead,
+    /// which handles enum configuration automatically.
     ///
     pub fn build_enum_config(self) -> EnumConfig {
         EnumConfig::new(self)
@@ -834,9 +820,6 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
     }
     fn finalize(&mut self, buf: &mut String) {
         self.inner.finalize(buf);
-
-        // Note: The enum deserializer module is now handled per-package in finalize_package
-        // to avoid adding enums from all files into every generated file
     }
 
     fn finalize_package(&mut self, package: &str, buf: &mut String) {
