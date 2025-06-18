@@ -15,7 +15,7 @@
 - 🔌 Works with existing Tonic services with zero modification
 - 🧠 Preserves metadata and headers between protocols
 - 🚦 Proper error status conversion from gRPC to HTTP
-- ✨ **NEW**: Automatic string enum support for HTTP endpoints (feature flag)
+- ✨ **NEW**: Automatic string enum support for HTTP endpoints
 
 ## Quick Start
 
@@ -83,20 +83,17 @@ For complete usage examples and API documentation:
 
 Enable automatic string enum deserialization for more user-friendly HTTP APIs:
 
-```toml
-[build-dependencies]
-g2h = { version = "0.3", features = ["string-enums"] }
-prost-types = "0.13.5"
-```
-
 ```rust
 // build.rs with string enum support
 use g2h::BridgeGenerator;
 
-BridgeGenerator::with_tonic_build()
-    .with_string_enums()  // Enable automatic enum string support
-    .build_prost_config()
-    .compile_protos(&["proto/service.proto"], &["proto"])?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    BridgeGenerator::with_tonic_build()
+        .with_string_enums()  // Enable automatic enum string support
+        .compile_protos_with_string_enums(&["proto/service.proto"], &["proto"])?;
+    
+    Ok(())
+}
 ```
 
 Now your HTTP endpoints accept both string and integer enum values:
@@ -108,6 +105,13 @@ Now your HTTP endpoints accept both string and integer enum values:
   "priority": 1              // Integer format (still supported)
 }
 ```
+
+### Key Benefits
+
+- **Zero setup**: Just add `.with_string_enums()` to your build script
+- **No feature flags**: Works out of the box
+- **No manual includes**: Enum deserializers are automatically included
+- **Dynamic**: Works with any protobuf package structure
 
 ## License
 

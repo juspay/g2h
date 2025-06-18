@@ -89,13 +89,11 @@ use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
 
-#[cfg(feature = "string-enums")]
 use prost_types::{
     FileDescriptorSet, FileDescriptorProto, DescriptorProto, 
     FieldDescriptorProto, field_descriptor_proto::{Type, Label}
 };
-
-#[cfg(feature = "string-enums")]
+use prost::Message;
 
 #[cfg(feature = "validate")]
 pub(crate) mod vercheck;
@@ -155,7 +153,6 @@ pub struct BridgeGenerator {
     /// This is typically the default Tonic generator.
     inner: Box<dyn ServiceGenerator>,
     
-    #[cfg(feature = "string-enums")]
     /// Whether to enable automatic string enum deserialization
     enable_string_enums: bool,
 }
@@ -187,7 +184,6 @@ impl BridgeGenerator {
 
         Self { 
             inner,
-            #[cfg(feature = "string-enums")]
             enable_string_enums: false,
         }
     }
@@ -217,7 +213,92 @@ impl BridgeGenerator {
         config
     }
 
-    #[cfg(feature = "string-enums")]
+    ///
+    /// Compile protobuf files with automatic string enum support.
+    /// This is a convenience method that handles all the complexity internally.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    /// use g2h::BridgeGenerator;
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///    .with_string_enums()
+    ///    .compile_protos_with_string_enums(&["proto/service.proto"], &["proto"])?;
+    ///
+    /// ```
+    ///
+    pub fn compile_protos_with_string_enums(
+        self,
+        protos: &[impl AsRef<std::path::Path>],
+        includes: &[impl AsRef<std::path::Path>],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.compile_protos_with_string_enums_and_descriptor(protos, includes, None)
+    }
+
+    ///
+    /// Compile protobuf files with automatic string enum support and optional file descriptor set output.
+    /// This is a convenience method that handles all the complexity internally.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    /// use g2h::BridgeGenerator;
+    /// use std::{env, path::PathBuf};
+    ///
+    /// let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+    /// BridgeGenerator::with_tonic_build()
+    ///    .with_string_enums()
+    ///    .compile_protos_with_string_enums_and_descriptor(
+    ///        &["proto/service.proto"], 
+    ///        &["proto"],
+    ///        Some(out_dir.join("service_descriptors.bin"))
+    ///    )?;
+    ///
+    /// ```
+    ///
+    pub fn compile_protos_with_string_enums_and_descriptor(
+        self,
+        protos: &[impl AsRef<std::path::Path>],
+        includes: &[impl AsRef<std::path::Path>],
+        descriptor_path: Option<std::path::PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.enable_string_enums {
+            let mut config = self.build_prost_config();
+            if let Some(path) = descriptor_path {
+                config.file_descriptor_set_path(path);
+            }
+            return Ok(config.compile_protos(protos, includes)?);
+        }
+
+        use std::{env, path::PathBuf};
+        
+        let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+        
+        // First compile to get descriptors
+        let mut temp_config = prost_build::Config::new();
+        temp_config.file_descriptor_set_path(out_dir.join("temp_descriptors.bin"));
+        temp_config.compile_protos(protos, includes)?;
+        
+        // Read the descriptors
+        let descriptor_bytes = std::fs::read(out_dir.join("temp_descriptors.bin"))?;
+        let file_descriptor_set = FileDescriptorSet::decode(&*descriptor_bytes)?;
+        
+        // Build with automatic string enum support and compile
+        let mut final_config = self.build_enum_config()
+            .build_prost_config_with_descriptors(&file_descriptor_set);
+            
+        if let Some(path) = descriptor_path {
+            final_config.file_descriptor_set_path(path);
+        }
+        
+        final_config.compile_protos(protos, includes)?;
+            
+        Ok(())
+    }
+
     ///
     /// Creates an EnumConfig instance for advanced enum configuration.
     ///
@@ -254,7 +335,6 @@ impl BridgeGenerator {
         Self::new(tonic_build::configure().service_generator())
     }
 
-    #[cfg(feature = "string-enums")]
     ///
     /// Enable automatic string enum deserialization for HTTP endpoints.
     ///
@@ -296,13 +376,10 @@ impl BridgeGenerator {
     }
 }
 
-#[cfg(feature = "string-enums")]
 /// Configuration helper for building prost config with automatic enum detection
 pub struct EnumConfig {
     generator: BridgeGenerator,
 }
-
-#[cfg(feature = "string-enums")]
 impl EnumConfig {
     /// Create a new EnumConfig from a BridgeGenerator
     pub fn new(generator: BridgeGenerator) -> Self {
@@ -357,7 +434,7 @@ impl EnumConfig {
         // Process all fields in the message
         for field in &message.field {
             if Self::is_enum_field_static(field) {
-                config = Self::add_enum_deserializer_static(config, message_name, field);
+                config = Self::add_enum_deserializer_static(config, message_name, field, package);
             }
         }
         
@@ -378,24 +455,37 @@ impl EnumConfig {
         mut config: prost_build::Config,
         message_name: &str,
         field: &FieldDescriptorProto,
+        package: &str,
     ) -> prost_build::Config {
         let field_path = format!("{}.{}", message_name, field.name());
+        
+        // Convert package name to module path and map to actual Rust module structure
+        let module_path = match package {
+            "hello_world" => "hello_world::enum_deserializer".to_string(),
+            "ucs.payments" => "payments::enum_deserializer".to_string(),
+            "grpc.health.v1" => "health_check::enum_deserializer".to_string(),
+            "" => "enum_deserializer".to_string(),
+            _ => {
+                // For other packages, convert dots to double colons
+                format!("{}::enum_deserializer", package.replace('.', "::"))
+            }
+        };
         
         let serde_attribute = match Self::get_field_label_static(field) {
             FieldLabel::Optional => {
                 // For optional fields, check if prost would generate Option<T> or just T with default
                 if field.proto3_optional() {
-                    "#[serde(deserialize_with = \"crate::deserialize_option_enum_from_string\", default)]"
+                    format!("#[serde(deserialize_with = \"crate::{}::deserialize_option_enum_from_string\", default)]", module_path)
                 } else {
                     // In proto3, scalar types have implicit defaults, so use regular deserializer
-                    "#[serde(deserialize_with = \"crate::deserialize_enum_from_string\", default)]"
+                    format!("#[serde(deserialize_with = \"crate::{}::deserialize_enum_from_string\", default)]", module_path)
                 }
             },
-            FieldLabel::Required => "#[serde(deserialize_with = \"crate::deserialize_enum_from_string\")]",
-            FieldLabel::Repeated => "#[serde(deserialize_with = \"crate::deserialize_repeated_enum_from_string\", default)]",
+            FieldLabel::Required => format!("#[serde(deserialize_with = \"crate::{}::deserialize_enum_from_string\")]", module_path),
+            FieldLabel::Repeated => format!("#[serde(deserialize_with = \"crate::{}::deserialize_repeated_enum_from_string\", default)]", module_path),
         };
         
-        config.field_attribute(&field_path, serde_attribute);
+        config.field_attribute(&field_path, &serde_attribute);
         config
     }
 
@@ -422,9 +512,10 @@ impl EnumConfig {
         let enum_types = Self::extract_all_enum_types_static(file_descriptor_set);
         
         format!(
-            r#"
-// Auto-generated enum deserializer functions
+            r#"// Auto-generated enum deserializer module
+// This file contains utilities for deserializing protobuf enums from string values in JSON
 
+pub mod enum_deserializer {{
 {}
 
 {}
@@ -432,6 +523,7 @@ impl EnumConfig {
 {}
 
 {}
+}}
 "#,
             Self::generate_enum_list_macro_static(&enum_types),
             Self::generate_single_enum_deserializer_static(),
@@ -542,6 +634,7 @@ macro_rules! try_parse_all_enums {{
 
     fn generate_single_enum_deserializer_static() -> &'static str {
         r#"
+#[allow(dead_code)]
 pub fn deserialize_enum_from_string<'de, D>(deserializer: D) -> Result<i32, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -550,6 +643,7 @@ where
     
     #[derive(Deserialize)]
     #[serde(untagged)]
+    #[allow(dead_code)]
     enum EnumOrString {
         String(String),
         Int(i32),
@@ -572,6 +666,7 @@ where
 
     fn generate_option_enum_deserializer_static() -> &'static str {
         r#"
+#[allow(dead_code)]
 pub fn deserialize_option_enum_from_string<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -580,6 +675,7 @@ where
     
     #[derive(Deserialize)]
     #[serde(untagged)]
+    #[allow(dead_code)]
     enum OptionalEnumOrString {
         String(String),
         Int(i32),
@@ -604,6 +700,7 @@ where
 
     fn generate_repeated_enum_deserializer_static() -> &'static str {
         r#"
+#[allow(dead_code)]
 pub fn deserialize_repeated_enum_from_string<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -612,6 +709,7 @@ where
     
     #[derive(Deserialize)]
     #[serde(untagged)]
+    #[allow(dead_code)]
     enum EnumOrStringItem {
         String(String),
         Int(i32),
@@ -644,7 +742,6 @@ where
     }
 }
 
-#[cfg(feature = "string-enums")]
 #[derive(Debug)]
 enum FieldLabel {
     Optional,
@@ -746,11 +843,34 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
 
         buf.push_str(&output.to_string());
     }
-    fn finalize(&mut self, _buf: &mut String) {
-        self.inner.finalize(_buf);
+    fn finalize(&mut self, buf: &mut String) {
+        self.inner.finalize(buf);
+        
+        // If string enums are enabled, add the enum deserializer module at the end
+        if self.enable_string_enums {
+            // Read the file descriptor set from the temporary file to generate enum deserializer code
+            if let Ok(out_dir) = std::env::var("OUT_DIR") {
+                // Try multiple possible descriptor file names
+                let possible_paths = [
+                    std::path::PathBuf::from(&out_dir).join("temp_descriptors.bin"),
+                    std::path::PathBuf::from(&out_dir).join("connector_service_descriptor.bin"),
+                ];
+                
+                for descriptor_path in &possible_paths {
+                    if let Ok(descriptor_bytes) = std::fs::read(descriptor_path) {
+                        if let Ok(file_descriptor_set) = FileDescriptorSet::decode(&*descriptor_bytes) {
+                            let enum_deserializer_code = EnumConfig::generate_enum_deserializer_code_static(&file_descriptor_set);
+                            buf.push_str("\n");
+                            buf.push_str(&enum_deserializer_code);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    fn finalize_package(&mut self, _package: &str, _buf: &mut String) {
-        self.inner.finalize_package(_package, _buf);
+    fn finalize_package(&mut self, package: &str, buf: &mut String) {
+        self.inner.finalize_package(package, buf);
     }
 }

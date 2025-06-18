@@ -1,9 +1,5 @@
 use tower::ServiceExt;
 
-// Include the auto-generated enum deserializer functions from g2h (if string-enums feature is enabled)
-#[cfg(feature = "string-enums")]
-include!(concat!(env!("OUT_DIR"), "/enum_deserializer.rs"));
-
 mod hello_world {
     tonic::include_proto!("hello_world");
 }
