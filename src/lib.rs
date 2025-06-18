@@ -848,11 +848,10 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
         if self.enable_string_enums {
             if let Some(ref file_descriptor_set) = self.file_descriptor_set {
                 // Generate enum deserializer code only for enums in this specific package
-                let enum_deserializer_code =
-                    Self::generate_package_specific_enum_deserializer_code(
-                        file_descriptor_set,
-                        package,
-                    );
+                let enum_deserializer_code = Self::generate_package_specific_enum_deserializer_code(
+                    file_descriptor_set,
+                    package,
+                );
                 if !enum_deserializer_code.trim().is_empty() {
                     buf.push('\n');
                     buf.push_str(&enum_deserializer_code);

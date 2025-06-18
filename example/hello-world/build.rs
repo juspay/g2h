@@ -5,6 +5,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     BridgeGenerator::with_tonic_build()
         .with_string_enums()
         .compile_protos(&["protos/hello-world.proto"], &["protos"])?;
-    
+
     Ok(())
 }

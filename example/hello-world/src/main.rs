@@ -14,14 +14,14 @@ impl hello_world::greeter_server::Greeter for Server {
     ) -> Result<tonic::Response<hello_world::HelloReply>, tonic::Status> {
         let req = request.into_inner();
         let greeting_type = req.greeting_type;
-        
+
         let greeting = match greeting_type {
             0 => "Good day", // FORMAL
-            1 => "Hey",      // CASUAL  
+            1 => "Hey",      // CASUAL
             2 => "Hi there", // FRIENDLY
             _ => "Hello",    // default
         };
-        
+
         let reply = hello_world::HelloReply {
             message: format!("{} {}!", greeting, req.name),
             status: 0, // SUCCESS
@@ -32,8 +32,6 @@ impl hello_world::greeter_server::Greeter for Server {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
-
     let router = hello_world::greeter_handler(Server);
 
     let sample_request = serde_json::json!({
@@ -53,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status = response.status();
 
     assert_eq!(status, http::StatusCode::OK);
-    
+
     let body: axum::body::Body = response.into_body();
     let body_bytes = axum::body::to_bytes(body, usize::MAX).await?;
     let json_body = serde_json::from_slice::<serde_json::Value>(&body_bytes)?;
