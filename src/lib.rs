@@ -240,9 +240,7 @@ impl BridgeGenerator {
             return Ok(config.compile_protos(protos, includes)?);
         }
 
-        // Get file descriptors directly without temporary files
-        let mut temp_config = prost_build::Config::new();
-        let file_descriptor_set = temp_config.load_fds(protos, includes)?;
+        let file_descriptor_set = prost_build::Config::new().load_fds(protos, includes)?;
 
         // Build with automatic string enum support and compile
         let mut generator = self;
