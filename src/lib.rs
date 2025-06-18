@@ -229,7 +229,6 @@ impl BridgeGenerator {
     ///
     /// ```
     ///
-
     pub fn compile_protos_with_string_enums(
         self,
         protos: &[impl AsRef<std::path::Path>],
@@ -392,7 +391,7 @@ pub mod enum_deserializer {{
             // Top-level enums
             for enum_desc in &file.enum_type {
                 let enum_name = enum_desc.name();
-                enum_types.push(format!("{}", enum_name));
+                enum_types.push(enum_name.to_string());
             }
 
             // Enums in messages (recursive)
@@ -484,7 +483,7 @@ impl EnumConfig {
         mut config: prost_build::Config,
         message_name: &str,
         field: &FieldDescriptorProto,
-        package: &str,
+        _package: &str,
     ) -> prost_build::Config {
         let field_path = format!("{}.{}", message_name, field.name());
 
@@ -492,14 +491,14 @@ impl EnumConfig {
             FieldLabel::Optional => {
                 // For optional fields, check if prost would generate Option<T> or just T with default
                 if field.proto3_optional() {
-                    format!("#[serde(deserialize_with = \"enum_deserializer::deserialize_option_enum_from_string\", default)]")
+                    "#[serde(deserialize_with = \"enum_deserializer::deserialize_option_enum_from_string\", default)]".to_string()
                 } else {
                     // In proto3, scalar types have implicit defaults, so use regular deserializer
-                    format!("#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\", default)]")
+                    "#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\", default)]".to_string()
                 }
             },
-            FieldLabel::Required => format!("#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\")]"),
-            FieldLabel::Repeated => format!("#[serde(deserialize_with = \"enum_deserializer::deserialize_repeated_enum_from_string\", default)]"),
+            FieldLabel::Required => "#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\")]".to_string(),
+            FieldLabel::Repeated => "#[serde(deserialize_with = \"enum_deserializer::deserialize_repeated_enum_from_string\", default)]".to_string(),
         };
 
         config.field_attribute(&field_path, &serde_attribute);
@@ -554,12 +553,10 @@ pub mod enum_deserializer {{
         let mut enum_types = Vec::new();
 
         for file in &file_descriptor_set.file {
-            let package = file.package();
-
             // Top-level enums
             for enum_desc in &file.enum_type {
                 let enum_name = enum_desc.name();
-                enum_types.push(format!("{}", enum_name));
+                enum_types.push(enum_name.to_string());
             }
 
             // Enums in messages (recursive)
