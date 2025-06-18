@@ -214,22 +214,20 @@ impl BridgeGenerator {
     }
 
     ///
-    /// Compile protobuf files with automatic string enum support.
-    /// This is a convenience method that handles all the complexity internally.
+    /// Compile protobuf files with automatic configuration based on enabled features.
+    /// This is a convenience method that handles string enum support automatically.
     ///
     /// # Example
     ///
-    /// ```rust
-    ///
+    /// ```rust,ignore
     /// use g2h::BridgeGenerator;
     ///
     /// BridgeGenerator::with_tonic_build()
-    ///    .with_string_enums()
-    ///    .compile_protos_with_string_enums(&["proto/service.proto"], &["proto"])?;
-    ///
+    ///     .with_string_enums()
+    ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
     /// ```
     ///
-    pub fn compile_protos_with_string_enums(
+    pub fn compile_protos(
         self,
         protos: &[impl AsRef<std::path::Path>],
         includes: &[impl AsRef<std::path::Path>],
@@ -351,20 +349,15 @@ impl BridgeGenerator {
         }
 
         format!(
-            r#"// Auto-generated enum deserializer module for package: {}
-// This file contains utilities for deserializing protobuf enums from string values in JSON
-
-pub mod enum_deserializer {{
-    use super::*;
-{}
-
-{}
-
-{}
-
-{}
-}}
-"#,
+            "// Auto-generated enum deserializer module for package: {}\n\
+             // This file contains utilities for deserializing protobuf enums from string values in JSON\n\n\
+             pub mod enum_deserializer {{\n\
+                 use super::*;\n\
+             {}\n\n\
+             {}\n\n\
+             {}\n\n\
+             {}\n\
+             }}\n",
             target_package,
             EnumConfig::generate_enum_list_macro_static(&package_enum_types),
             EnumConfig::generate_single_enum_deserializer_static(),
@@ -528,20 +521,15 @@ impl EnumConfig {
         let enum_types = Self::extract_all_enum_types_static(file_descriptor_set);
 
         format!(
-            r#"// Auto-generated enum deserializer module
-// This file contains utilities for deserializing protobuf enums from string values in JSON
-
-pub mod enum_deserializer {{
-    use super::*;
-{}
-
-{}
-
-{}
-
-{}
-}}
-"#,
+            "// Auto-generated enum deserializer module\n\
+             // This file contains utilities for deserializing protobuf enums from string values in JSON\n\n\
+             pub mod enum_deserializer {{\n\
+                 use super::*;\n\
+             {}\n\n\
+             {}\n\n\
+             {}\n\n\
+             {}\n\
+             }}\n",
             Self::generate_enum_list_macro_static(&enum_types),
             Self::generate_single_enum_deserializer_static(),
             Self::generate_option_enum_deserializer_static(),
