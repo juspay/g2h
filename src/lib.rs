@@ -89,7 +89,6 @@ use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
 
-use prost::Message;
 use prost_types::{
     field_descriptor_proto::{Label, Type},
     DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
@@ -155,6 +154,9 @@ pub struct BridgeGenerator {
 
     /// Whether to enable automatic string enum deserialization
     enable_string_enums: bool,
+
+    /// File descriptor set for enum processing (only set when string enums are enabled)
+    file_descriptor_set: Option<FileDescriptorSet>,
 }
 
 impl BridgeGenerator {
@@ -185,6 +187,7 @@ impl BridgeGenerator {
         Self {
             inner,
             enable_string_enums: false,
+            file_descriptor_set: None,
         }
     }
 
@@ -237,21 +240,14 @@ impl BridgeGenerator {
             return Ok(config.compile_protos(protos, includes)?);
         }
 
-        use std::{env, path::PathBuf};
-
-        let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-
-        // First compile to get descriptors
+        // Get file descriptors directly without temporary files
         let mut temp_config = prost_build::Config::new();
-        temp_config.file_descriptor_set_path(out_dir.join("temp_descriptors.bin"));
-        temp_config.compile_protos(protos, includes)?;
-
-        // Read the descriptors
-        let descriptor_bytes = std::fs::read(out_dir.join("temp_descriptors.bin"))?;
-        let file_descriptor_set = FileDescriptorSet::decode(&*descriptor_bytes)?;
+        let file_descriptor_set = temp_config.load_fds(protos, includes)?;
 
         // Build with automatic string enum support and compile
-        let mut final_config = self
+        let mut generator = self;
+        generator.file_descriptor_set = Some(file_descriptor_set.clone());
+        let mut final_config = generator
             .build_enum_config()
             .build_prost_config_with_descriptors(&file_descriptor_set);
 
@@ -850,24 +846,16 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
 
         // If string enums are enabled, add the enum deserializer module at the end of each package
         if self.enable_string_enums {
-            // Read the file descriptor set from the temporary file to generate enum deserializer code
-            if let Ok(out_dir) = std::env::var("OUT_DIR") {
-                let descriptor_path =
-                    std::path::PathBuf::from(&out_dir).join("temp_descriptors.bin");
-
-                if let Ok(descriptor_bytes) = std::fs::read(descriptor_path) {
-                    if let Ok(file_descriptor_set) = FileDescriptorSet::decode(&*descriptor_bytes) {
-                        // Generate enum deserializer code only for enums in this specific package
-                        let enum_deserializer_code =
-                            Self::generate_package_specific_enum_deserializer_code(
-                                &file_descriptor_set,
-                                package,
-                            );
-                        if !enum_deserializer_code.trim().is_empty() {
-                            buf.push('\n');
-                            buf.push_str(&enum_deserializer_code);
-                        }
-                    }
+            if let Some(ref file_descriptor_set) = self.file_descriptor_set {
+                // Generate enum deserializer code only for enums in this specific package
+                let enum_deserializer_code =
+                    Self::generate_package_specific_enum_deserializer_code(
+                        file_descriptor_set,
+                        package,
+                    );
+                if !enum_deserializer_code.trim().is_empty() {
+                    buf.push('\n');
+                    buf.push_str(&enum_deserializer_code);
                 }
             }
         }
