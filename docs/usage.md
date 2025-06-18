@@ -46,9 +46,9 @@ use g2h::BridgeGenerator;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     
-    // Simple approach with default settings
+    // Simple approach with string enum support
     BridgeGenerator::with_tonic_build()
-        .build_prost_config()
+        .with_string_enums()
         .compile_protos(&["proto/user_service.proto"], &["proto"])?;
     
     // Alternative approach with more control

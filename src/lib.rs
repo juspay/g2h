@@ -89,6 +89,7 @@ use heck::ToSnakeCase;
 use prost_build::ServiceGenerator;
 use quote::quote;
 
+use prost::Message;
 use prost_types::{
     field_descriptor_proto::{Label, Type},
     DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
@@ -157,6 +158,9 @@ pub struct BridgeGenerator {
 
     /// File descriptor set for enum processing (only set when string enums are enabled)
     file_descriptor_set: Option<FileDescriptorSet>,
+
+    /// Path where file descriptor set should be written (for tonic_reflection support)
+    descriptor_set_path: Option<std::path::PathBuf>,
 }
 
 impl BridgeGenerator {
@@ -188,6 +192,7 @@ impl BridgeGenerator {
             inner,
             enable_string_enums: false,
             file_descriptor_set: None,
+            descriptor_set_path: None,
         }
     }
 
@@ -235,14 +240,31 @@ impl BridgeGenerator {
         protos: &[impl AsRef<std::path::Path>],
         includes: &[impl AsRef<std::path::Path>],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Load file descriptors for string enum support or descriptor set generation
+        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some() {
+            Some(prost_build::Config::new().load_fds(protos, includes)?)
+        } else {
+            None
+        };
+
+        // Write descriptor set if path is provided
+        if let (Some(ref path), Some(ref fds)) = (&self.descriptor_set_path, &file_descriptor_set) {
+            let bytes = fds.encode_to_vec();
+            std::fs::write(path, bytes)?;
+        }
+
         if !self.enable_string_enums {
+            let descriptor_path = self.descriptor_set_path.clone();
             let mut config = self.build_prost_config();
+            // Add descriptor set path to config if provided
+            if let Some(path) = descriptor_path {
+                config.file_descriptor_set_path(path);
+            }
             return Ok(config.compile_protos(protos, includes)?);
         }
 
-        let file_descriptor_set = prost_build::Config::new().load_fds(protos, includes)?;
-
         // Build with automatic string enum support and compile
+        let file_descriptor_set = file_descriptor_set.unwrap(); // Safe because enable_string_enums is true
         let mut generator = self;
         generator.file_descriptor_set = Some(file_descriptor_set.clone());
         let mut final_config = generator
@@ -291,7 +313,6 @@ impl BridgeGenerator {
     ///
     /// BridgeGenerator::with_tonic_build()
     ///     .with_string_enums()
-    ///     .build_prost_config()
     ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
     /// ```
     ///
@@ -313,6 +334,31 @@ impl BridgeGenerator {
     ///
     pub fn with_string_enums(mut self) -> Self {
         self.enable_string_enums = true;
+        self
+    }
+
+    ///
+    /// Set the path where the file descriptor set should be written.
+    /// 
+    /// This is useful for tonic_reflection support which requires access to the
+    /// file descriptor set at runtime.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    /// use std::env;
+    /// use std::path::PathBuf;
+    ///
+    /// let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .file_descriptor_set_path(out_dir.join("service_descriptor.bin"))
+    ///     .compile_protos(&["proto/service.proto"], &["proto"])?;
+    /// ```
+    ///
+    pub fn file_descriptor_set_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        self.descriptor_set_path = Some(path.as_ref().to_path_buf());
         self
     }
 
