@@ -89,8 +89,9 @@ use g2h::BridgeGenerator;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     BridgeGenerator::with_tonic_build()
+        .build_prost_config()
         .with_string_enums()  // Enable automatic enum string support
-        .compile_protos_with_string_enums(&["proto/service.proto"], &["proto"])?;
+        .compile_protos(&["proto/service.proto"], &["proto"])?;
     
     Ok(())
 }
@@ -108,10 +109,11 @@ Now your HTTP endpoints accept both string and integer enum values:
 
 ### Key Benefits
 
-- **Zero setup**: Just add `.with_string_enums()` to your build script
+- **Drop-in replacement**: Just add `.with_string_enums()` to your existing build chain
 - **No feature flags**: Works out of the box
 - **No manual includes**: Enum deserializers are automatically included
 - **Dynamic**: Works with any protobuf package structure
+- **Chainable API**: Follows the same pattern as standard prost_build configuration
 
 ## License
 

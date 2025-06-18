@@ -8,25 +8,17 @@ service Greeter {
   rpc SayHello (HelloRequest) returns (HelloReply) {}
 }
 
-// Top-level enum for greeting types
+// Enum for greeting types
 enum GreetingType {
   FORMAL = 0;
   CASUAL = 1;
   FRIENDLY = 2;
 }
 
-// Priority enum for messages
-enum Priority {
-  LOW = 0;
-  MEDIUM = 1;
-  HIGH = 2;
-}
-
 // The request message containing the user's name
 message HelloRequest {
   string name = 1;
   GreetingType greeting_type = 2;
-  Priority priority = 3;
 }
 
 // The response message containing the greeting
@@ -38,6 +30,5 @@ message HelloReply {
   enum ResponseStatus {
     SUCCESS = 0;
     ERROR = 1;
-    PARTIAL = 2;
   }
 }

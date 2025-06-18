@@ -14,7 +14,6 @@ impl hello_world::greeter_server::Greeter for Server {
     ) -> Result<tonic::Response<hello_world::HelloReply>, tonic::Status> {
         let req = request.into_inner();
         let greeting_type = req.greeting_type;
-        let priority = req.priority;
         
         let greeting = match greeting_type {
             0 => "Good day", // FORMAL
@@ -24,7 +23,7 @@ impl hello_world::greeter_server::Greeter for Server {
         };
         
         let reply = hello_world::HelloReply {
-            message: format!("{} {}! (priority: {})", greeting, req.name, priority),
+            message: format!("{} {}!", greeting, req.name),
             status: 0, // SUCCESS
         };
         Ok(tonic::Response::new(reply))
@@ -39,8 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sample_request = serde_json::json!({
         "name": "World",
-        "greeting_type": "CASUAL",  // Test string enum support
-        "priority": "HIGH"          // Test string enum support
+        "greeting_type": "CASUAL"  // Test string enum support
     });
 
     println!("request: {}", sample_request);
@@ -60,8 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body_bytes = axum::body::to_bytes(body, usize::MAX).await?;
     let json_body = serde_json::from_slice::<serde_json::Value>(&body_bytes)?;
 
-    // With string enum support, should get "Hey World! (priority: 2)"
-    println!("Expected: Hey World! (priority: 2)");
+    // With string enum support, should get "Hey World!"
+    println!("Expected: Hey World!");
     println!("Actual: {}", json_body["message"]);
 
     println!("response: {}", json_body);
