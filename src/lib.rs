@@ -240,8 +240,8 @@ impl BridgeGenerator {
         protos: &[impl AsRef<std::path::Path>],
         includes: &[impl AsRef<std::path::Path>],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Load file descriptors for string enum support or descriptor set generation
-        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some() {
+        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some()
+        {
             Some(prost_build::Config::new().load_fds(protos, includes)?)
         } else {
             None
@@ -339,7 +339,6 @@ impl BridgeGenerator {
 
     ///
     /// Set the path where the file descriptor set should be written.
-    /// 
     /// This is useful for tonic_reflection support which requires access to the
     /// file descriptor set at runtime.
     ///
