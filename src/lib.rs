@@ -285,7 +285,7 @@ impl BridgeGenerator {
     /// Note: Most users should use the simpler `compile_protos()` method instead,
     /// which handles enum configuration automatically.
     ///
-    pub fn build_enum_config(self) -> EnumConfig {
+    fn build_enum_config(self) -> EnumConfig {
         EnumConfig::new(self)
     }
 
@@ -373,22 +373,33 @@ impl BridgeGenerator {
             return String::new();
         }
 
-        format!(
-            "// Auto-generated enum deserializer module for package: {}\n\
-             // This file contains utilities for deserializing protobuf enums from string values in JSON\n\n\
-             pub mod enum_deserializer {{\n\
-                 use super::*;\n\
-             {}\n\n\
-             {}\n\n\
-             {}\n\n\
-             {}\n\
-             }}\n",
-            target_package,
-            EnumConfig::generate_enum_list_macro_static(&package_enum_types),
-            EnumConfig::generate_single_enum_deserializer_static(),
-            EnumConfig::generate_option_enum_deserializer_static(),
-            EnumConfig::generate_repeated_enum_deserializer_static()
-        )
+        let enum_list_macro = EnumConfig::generate_enum_list_macro_static(&package_enum_types);
+        let single_deserializer = EnumConfig::generate_single_enum_deserializer_static();
+        let option_deserializer = EnumConfig::generate_option_enum_deserializer_static();
+        let repeated_deserializer = EnumConfig::generate_repeated_enum_deserializer_static();
+
+        // Parse the generated strings as token streams for quote
+        let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse().unwrap();
+        let single_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
+        let option_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
+        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+
+        quote! {
+            // Auto-generated enum deserializer module for package: #target_package
+            // This file contains utilities for deserializing protobuf enums from string values in JSON
+
+            pub mod enum_deserializer {
+                use super::*;
+                #enum_list_tokens
+
+                #single_tokens
+
+                #option_tokens
+
+                #repeated_tokens
+            }
+        }
+        .to_string()
     }
 
     /// Extract enum types only from a specific package
@@ -540,26 +551,37 @@ impl EnumConfig {
     }
 
     /// Static version for generating enum deserializer code
-    pub fn generate_enum_deserializer_code_static(
-        file_descriptor_set: &FileDescriptorSet,
-    ) -> String {
+    fn generate_enum_deserializer_code_static(file_descriptor_set: &FileDescriptorSet) -> String {
         let enum_types = Self::extract_all_enum_types_static(file_descriptor_set);
 
-        format!(
-            "// Auto-generated enum deserializer module\n\
-             // This file contains utilities for deserializing protobuf enums from string values in JSON\n\n\
-             pub mod enum_deserializer {{\n\
-                 use super::*;\n\
-             {}\n\n\
-             {}\n\n\
-             {}\n\n\
-             {}\n\
-             }}\n",
-            Self::generate_enum_list_macro_static(&enum_types),
-            Self::generate_single_enum_deserializer_static(),
-            Self::generate_option_enum_deserializer_static(),
-            Self::generate_repeated_enum_deserializer_static()
-        )
+        let enum_list_macro = Self::generate_enum_list_macro_static(&enum_types);
+        let single_deserializer = Self::generate_single_enum_deserializer_static();
+        let option_deserializer = Self::generate_option_enum_deserializer_static();
+        let repeated_deserializer = Self::generate_repeated_enum_deserializer_static();
+
+        // Parse the generated strings as token streams for quote
+        let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse().unwrap();
+        let single_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
+        let option_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
+        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+
+        quote! {
+            // Auto-generated enum deserializer module
+            // This file contains utilities for deserializing protobuf enums from string values in JSON
+
+            pub mod enum_deserializer {
+                use super::*;
+
+                #enum_list_tokens
+
+                #single_tokens
+
+                #option_tokens
+
+                #repeated_tokens
+            }
+        }
+        .to_string()
     }
 
     fn extract_all_enum_types_static(file_descriptor_set: &FileDescriptorSet) -> Vec<String> {
@@ -581,10 +603,7 @@ impl EnumConfig {
         enum_types
     }
 
-    pub fn extract_nested_enums_static(
-        message: &DescriptorProto,
-        module_path: &str,
-    ) -> Vec<String> {
+    fn extract_nested_enums_static(message: &DescriptorProto, module_path: &str) -> Vec<String> {
         let mut enum_types = Vec::new();
         let message_name = message.name();
 
@@ -626,36 +645,36 @@ impl EnumConfig {
         result
     }
 
-    pub fn generate_enum_list_macro_static(enum_types: &[String]) -> String {
-        let enum_checks = enum_types
+    fn generate_enum_list_macro_static(enum_types: &[String]) -> String {
+        // Convert enum type strings to identifiers for quote
+        let enum_idents: Vec<proc_macro2::TokenStream> = enum_types
             .iter()
             .map(|enum_type| {
-                format!(
-                    "if let Some(val) = {}::from_str_name($s) {{ return Some(val as i32); }}",
-                    enum_type
-                )
+                // Parse the enum type path as tokens (e.g., "MyEnum" or "module::MyEnum")
+                enum_type.parse().unwrap()
             })
-            .collect::<Vec<_>>()
-            .join("\n            ");
+            .collect();
 
-        format!(
-            r#"
-            macro_rules! try_parse_all_enums {{
-                ($s:expr) => {{
-                    {{
+        quote! {
+            macro_rules! try_parse_all_enums {
+                ($s:expr) => {
+                    {
                         // Try each enum type
-                        {}
-                        
+                        #(
+                            if let Some(val) = #enum_idents::from_str_name($s) {
+                                return Some(val as i32);
+                            }
+                        )*
+
                         None
-                    }}
-                }};
-            }}
-            "#,
-            enum_checks
-        )
+                    }
+                };
+            }
+        }
+        .to_string()
     }
 
-    pub fn generate_single_enum_deserializer_static() -> String {
+    fn generate_single_enum_deserializer_static() -> String {
         quote! {
             #[allow(dead_code)]
             pub fn deserialize_enum_from_string<'de, D>(deserializer: D) -> Result<i32, D::Error>
@@ -688,7 +707,7 @@ impl EnumConfig {
         .to_string()
     }
 
-    pub fn generate_option_enum_deserializer_static() -> String {
+    fn generate_option_enum_deserializer_static() -> String {
         quote! {
             #[allow(dead_code)]
             pub fn deserialize_option_enum_from_string<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
@@ -720,7 +739,7 @@ impl EnumConfig {
         }.to_string()
     }
 
-    pub fn generate_repeated_enum_deserializer_static() -> String {
+    fn generate_repeated_enum_deserializer_static() -> String {
         quote! {
             #[allow(dead_code)]
             pub fn deserialize_repeated_enum_from_string<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
