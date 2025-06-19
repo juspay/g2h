@@ -379,10 +379,14 @@ impl BridgeGenerator {
         let repeated_deserializer = EnumConfig::generate_repeated_enum_deserializer_static();
 
         // Parse the generated strings as token streams for quote
-        let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse().unwrap();
-        let single_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
-        let option_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
-        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+        let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse()
+            .expect("Generated enum list macro should be valid Rust syntax");
+        let single_tokens: proc_macro2::TokenStream = single_deserializer.parse()
+            .expect("Generated single enum deserializer should be valid Rust syntax");
+        let option_tokens: proc_macro2::TokenStream = option_deserializer.parse()
+            .expect("Generated option enum deserializer should be valid Rust syntax");
+        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer.parse()
+            .expect("Generated repeated enum deserializer should be valid Rust syntax");
 
         quote! {
             // Auto-generated enum deserializer module for package: #target_package
@@ -651,7 +655,8 @@ impl EnumConfig {
             .iter()
             .map(|enum_type| {
                 // Parse the enum type path as tokens (e.g., "MyEnum" or "module::MyEnum")
-                enum_type.parse().unwrap()
+                enum_type.parse()
+                    .unwrap_or_else(|e| panic!("Invalid enum type path '{}': {}", enum_type, e))
             })
             .collect();
 
