@@ -8,11 +8,34 @@ service Greeter {
   rpc SayHello (HelloRequest) returns (HelloReply) {}
 }
 
+// Payment connector service for demonstrating enum string serialization and null skipping
+service PaymentConnector {
+  // Process a payment
+  rpc ProcessPayment (PaymentRequest) returns (PaymentResponse) {}
+  // Get payment status
+  rpc GetPaymentStatus (StatusRequest) returns (PaymentResponse) {}
+}
+
 // Enum for greeting types
 enum GreetingType {
   FORMAL = 0;
   CASUAL = 1;
   FRIENDLY = 2;
+}
+
+// Payment status enum with real-world error codes
+enum PaymentStatus {
+  SUCCESS = 0;
+  PENDING = 1;
+  FAILED = 2;
+  CANCELLED = 3;
+  
+  // Error statuses with actual numeric codes
+  BAD_REQUEST_ERROR = 21;
+  UNAUTHORIZED_ERROR = 22;
+  FORBIDDEN_ERROR = 23;
+  NOT_FOUND_ERROR = 24;
+  DUPLICATE_ORDER_ERROR = 25;
 }
 
 // The request message containing the user's name
@@ -31,4 +54,46 @@ message HelloReply {
     SUCCESS = 0;
     ERROR = 1;
   }
+}
+
+// Payment request
+message PaymentRequest {
+  string order_id = 1;
+  string receipt = 2;
+  double amount = 3;
+  string currency = 4;
+  string customer_id = 5;
+  string payment_method = 6;
+}
+
+// Status request
+message StatusRequest {
+  string transaction_id = 1;
+  string order_id = 2;
+}
+
+// Payment response demonstrating string enum serialization and null skipping
+message PaymentResponse {
+  string transaction_id = 1;
+  PaymentStatus status = 2;  // Will serialize as string like "BAD_REQUEST_ERROR"
+  string error_code = 3;     // Will be omitted if empty
+  string error_message = 4;  // Will be omitted if empty
+  string redirection_data = 5; // Will be omitted if empty
+  string network_txn_id = 6;   // Will be omitted if empty
+  string response_ref_id = 7;  // Will be omitted if empty
+  bool incremental_authorization_allowed = 8;
+  string raw_connector_response = 9; // Will be omitted if empty
+  
+  // Optional error details - will be omitted if null
+  ErrorDetail error_detail = 10;
+}
+
+// Error detail structure
+message ErrorDetail {
+  string code = 1;
+  string description = 2;
+  string step = 3;
+  string reason = 4;
+  string source = 5;
+  map<string, string> metadata = 6;
 }

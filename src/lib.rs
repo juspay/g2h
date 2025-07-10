@@ -374,37 +374,61 @@ impl BridgeGenerator {
         }
 
         let enum_list_macro = EnumConfig::generate_enum_list_macro_static(&package_enum_types);
+        let enum_serializer_macro = EnumConfig::generate_enum_serializer_macro_static(&package_enum_types);
         let single_deserializer = EnumConfig::generate_single_enum_deserializer_static();
         let option_deserializer = EnumConfig::generate_option_enum_deserializer_static();
         let repeated_deserializer = EnumConfig::generate_repeated_enum_deserializer_static();
+        let single_serializer = EnumConfig::generate_single_enum_serializer_static();
+        let option_serializer = EnumConfig::generate_option_enum_serializer_static();
+        let repeated_serializer = EnumConfig::generate_repeated_enum_serializer_static();
 
         // Parse the generated strings as token streams for quote
         let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro
             .parse()
             .expect("Generated enum list macro should be valid Rust syntax");
-        let single_tokens: proc_macro2::TokenStream = single_deserializer
+        let enum_serializer_tokens: proc_macro2::TokenStream = enum_serializer_macro
+            .parse()
+            .expect("Generated enum serializer macro should be valid Rust syntax");
+        let single_deserializer_tokens: proc_macro2::TokenStream = single_deserializer
             .parse()
             .expect("Generated single enum deserializer should be valid Rust syntax");
-        let option_tokens: proc_macro2::TokenStream = option_deserializer
+        let option_deserializer_tokens: proc_macro2::TokenStream = option_deserializer
             .parse()
             .expect("Generated option enum deserializer should be valid Rust syntax");
-        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer
+        let repeated_deserializer_tokens: proc_macro2::TokenStream = repeated_deserializer
             .parse()
             .expect("Generated repeated enum deserializer should be valid Rust syntax");
+        let single_serializer_tokens: proc_macro2::TokenStream = single_serializer
+            .parse()
+            .expect("Generated single enum serializer should be valid Rust syntax");
+        let option_serializer_tokens: proc_macro2::TokenStream = option_serializer
+            .parse()
+            .expect("Generated option enum serializer should be valid Rust syntax");
+        let repeated_serializer_tokens: proc_macro2::TokenStream = repeated_serializer
+            .parse()
+            .expect("Generated repeated enum serializer should be valid Rust syntax");
 
         quote! {
             // Auto-generated enum deserializer module for package: #target_package
-            // This file contains utilities for deserializing protobuf enums from string values in JSON
+            // This file contains utilities for serializing and deserializing protobuf enums from string values in JSON
 
             pub mod enum_deserializer {
                 use super::*;
                 #enum_list_tokens
 
-                #single_tokens
+                #enum_serializer_tokens
 
-                #option_tokens
+                #single_deserializer_tokens
 
-                #repeated_tokens
+                #option_deserializer_tokens
+
+                #repeated_deserializer_tokens
+
+                #single_serializer_tokens
+
+                #option_serializer_tokens
+
+                #repeated_serializer_tokens
             }
         }
         .to_string()
@@ -462,6 +486,9 @@ impl EnumConfig {
         if enable_string_enums {
             config = Self::add_enum_string_support_static(config, file_descriptor_set);
         }
+
+        // Add skip nulls support by default
+        config = Self::add_skip_nulls_support_static(config, file_descriptor_set);
 
         config
     }
@@ -528,14 +555,14 @@ impl EnumConfig {
             FieldLabel::Optional => {
                 // For optional fields, check if prost would generate Option<T> or just T with default
                 if field.proto3_optional() {
-                    "#[serde(deserialize_with = \"enum_deserializer::deserialize_option_enum_from_string\", default)]".to_string()
+                    "#[serde(serialize_with = \"enum_deserializer::serialize_option_enum_as_string\", deserialize_with = \"enum_deserializer::deserialize_option_enum_from_string\", default)]".to_string()
                 } else {
                     // In proto3, scalar types have implicit defaults, so use regular deserializer
-                    "#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\", default)]".to_string()
+                    "#[serde(serialize_with = \"enum_deserializer::serialize_enum_as_string\", deserialize_with = \"enum_deserializer::deserialize_enum_from_string\", default)]".to_string()
                 }
             },
-            FieldLabel::Required => "#[serde(deserialize_with = \"enum_deserializer::deserialize_enum_from_string\")]".to_string(),
-            FieldLabel::Repeated => "#[serde(deserialize_with = \"enum_deserializer::deserialize_repeated_enum_from_string\", default)]".to_string(),
+            FieldLabel::Required => "#[serde(serialize_with = \"enum_deserializer::serialize_enum_as_string\", deserialize_with = \"enum_deserializer::deserialize_enum_from_string\")]".to_string(),
+            FieldLabel::Repeated => "#[serde(serialize_with = \"enum_deserializer::serialize_repeated_enum_as_string\", deserialize_with = \"enum_deserializer::deserialize_repeated_enum_from_string\", default)]".to_string(),
         };
 
         config.field_attribute(&field_path, &serde_attribute);
@@ -548,6 +575,61 @@ impl EnumConfig {
             Label::Required => FieldLabel::Required,
             Label::Repeated => FieldLabel::Repeated,
         }
+    }
+
+    /// Add skip nulls support by detecting field types and adding appropriate skip_serializing_if attributes
+    fn add_skip_nulls_support_static(
+        mut config: prost_build::Config,
+        file_descriptor_set: &FileDescriptorSet,
+    ) -> prost_build::Config {
+        for file in &file_descriptor_set.file {
+            for message in &file.message_type {
+                config = Self::process_message_skip_nulls_recursive(config, message);
+            }
+        }
+        config
+    }
+
+    fn process_message_skip_nulls_recursive(
+        mut config: prost_build::Config,
+        message: &DescriptorProto,
+    ) -> prost_build::Config {
+        let message_name = message.name();
+
+        // Process all fields in the message
+        for field in &message.field {
+            config = Self::add_skip_null_attribute_static(config, message_name, field);
+        }
+
+        // Recursively process nested message types
+        for nested_message in &message.nested_type {
+            config = Self::process_message_skip_nulls_recursive(config, nested_message);
+        }
+
+        config
+    }
+
+    fn add_skip_null_attribute_static(
+        mut config: prost_build::Config,
+        message_name: &str,
+        field: &FieldDescriptorProto,
+    ) -> prost_build::Config {
+        const SKIP_NONE: &str = "#[serde(skip_serializing_if = \"Option::is_none\")]";
+        const SKIP_EMPTY: &str = "#[serde(skip_serializing_if = \"String::is_empty\")]";
+        let field_path = format!("{}.{}", message_name, field.name());
+        let skip_attribute = if field.proto3_optional() || (field.label() == Label::Optional && field.r#type() == Type::Message) {
+            Some(SKIP_NONE)
+        } else if field.r#type() == Type::String && field.label() != Label::Repeated {
+            Some(SKIP_EMPTY)
+        } else {
+            None
+        };
+
+        if let Some(attribute) = skip_attribute {
+            config.field_attribute(&field_path, attribute);
+        }
+
+        config
     }
 
     /// Generate enum deserializer code that can be included in the generated crate
@@ -563,30 +645,46 @@ impl EnumConfig {
         let enum_types = Self::extract_all_enum_types_static(file_descriptor_set);
 
         let enum_list_macro = Self::generate_enum_list_macro_static(&enum_types);
+        let enum_serializer_macro = Self::generate_enum_serializer_macro_static(&enum_types);
         let single_deserializer = Self::generate_single_enum_deserializer_static();
         let option_deserializer = Self::generate_option_enum_deserializer_static();
         let repeated_deserializer = Self::generate_repeated_enum_deserializer_static();
+        let single_serializer = Self::generate_single_enum_serializer_static();
+        let option_serializer = Self::generate_option_enum_serializer_static();
+        let repeated_serializer = Self::generate_repeated_enum_serializer_static();
 
         // Parse the generated strings as token streams for quote
         let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse().unwrap();
-        let single_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
-        let option_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
-        let repeated_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+        let enum_serializer_tokens: proc_macro2::TokenStream = enum_serializer_macro.parse().unwrap();
+        let single_deserializer_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
+        let option_deserializer_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
+        let repeated_deserializer_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+        let single_serializer_tokens: proc_macro2::TokenStream = single_serializer.parse().unwrap();
+        let option_serializer_tokens: proc_macro2::TokenStream = option_serializer.parse().unwrap();
+        let repeated_serializer_tokens: proc_macro2::TokenStream = repeated_serializer.parse().unwrap();
 
         quote! {
             // Auto-generated enum deserializer module
-            // This file contains utilities for deserializing protobuf enums from string values in JSON
+            // This file contains utilities for serializing and deserializing protobuf enums from string values in JSON
 
             pub mod enum_deserializer {
                 use super::*;
 
                 #enum_list_tokens
 
-                #single_tokens
+                #enum_serializer_tokens
 
-                #option_tokens
+                #single_deserializer_tokens
 
-                #repeated_tokens
+                #option_deserializer_tokens
+
+                #repeated_deserializer_tokens
+
+                #single_serializer_tokens
+
+                #option_serializer_tokens
+
+                #repeated_serializer_tokens
             }
         }
         .to_string()
@@ -673,6 +771,37 @@ impl EnumConfig {
                         #(
                             if let Some(val) = #enum_idents::from_str_name($s) {
                                 return Some(val as i32);
+                            }
+                        )*
+
+                        None
+                    }
+                };
+            }
+        }
+        .to_string()
+    }
+
+    fn generate_enum_serializer_macro_static(enum_types: &[String]) -> String {
+        // Convert enum type strings to identifiers for quote
+        let enum_idents: Vec<proc_macro2::TokenStream> = enum_types
+            .iter()
+            .map(|enum_type| {
+                // Parse the enum type path as tokens (e.g., "MyEnum" or "module::MyEnum")
+                enum_type
+                    .parse()
+                    .unwrap_or_else(|e| panic!("Invalid enum type path '{}': {}", enum_type, e))
+            })
+            .collect();
+
+        quote! {
+            macro_rules! try_serialize_all_enums {
+                ($value:expr) => {
+                    {
+                        // Try each enum type
+                        #(
+                            if let Ok(enum_val) = #enum_idents::try_from($value) {
+                                return Some(enum_val.as_str_name());
                             }
                         )*
 
@@ -786,6 +915,74 @@ impl EnumConfig {
                 }
 
                 Ok(result)
+            }
+        }.to_string()
+    }
+
+    fn generate_single_enum_serializer_static() -> String {
+        quote! {
+            #[allow(dead_code)]
+            pub fn serialize_enum_as_string<S>(value: &i32, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                use serde::Serialize;
+                fn try_enum_to_string(value: i32) -> Option<&'static str> {
+                    try_serialize_all_enums!(value)
+                }
+                if let Some(enum_str) = try_enum_to_string(*value) {
+                    enum_str.serialize(serializer)
+                } else {
+                    value.serialize(serializer)
+                }
+            }
+        }.to_string()
+    }
+
+    fn generate_option_enum_serializer_static() -> String {
+        quote! {
+            #[allow(dead_code)]
+            pub fn serialize_option_enum_as_string<S>(value: &Option<i32>, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                use serde::Serialize;
+                fn try_enum_to_string(value: i32) -> Option<&'static str> {
+                    try_serialize_all_enums!(value)
+                }
+                match value {
+                    Some(val) => {
+                        if let Some(enum_str) = try_enum_to_string(*val) {
+                            Some(enum_str).serialize(serializer)
+                        } else {
+                            Some(*val).serialize(serializer)
+                        }
+                    }
+                    None => None::<&str>.serialize(serializer),
+                }
+            }
+        }.to_string()
+    }
+
+    fn generate_repeated_enum_serializer_static() -> String {
+        quote! {
+            #[allow(dead_code)]
+            pub fn serialize_repeated_enum_as_string<S>(values: &Vec<i32>, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                use serde::Serialize;
+                fn try_enum_to_string(value: i32) -> Option<&'static str> {
+                    try_serialize_all_enums!(value)
+                }
+                let string_values: Vec<_> = values.iter().map(|val| {
+                    if let Some(enum_str) = try_enum_to_string(*val) {
+                        enum_str.to_string()
+                    } else {
+                        val.to_string()
+                    }
+                }).collect();
+                string_values.serialize(serializer)
             }
         }.to_string()
     }

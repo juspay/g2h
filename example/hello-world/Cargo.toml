@@ -3,6 +3,14 @@ name = "hello-world"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "hello-world"
+path = "src/main.rs"
+
+[[bin]]
+name = "connector-service"
+path = "src/connector_service.rs"
+
 
 [dependencies]
 tonic = "0.13.0"
