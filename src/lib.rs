@@ -374,7 +374,8 @@ impl BridgeGenerator {
         }
 
         let enum_list_macro = EnumConfig::generate_enum_list_macro_static(&package_enum_types);
-        let enum_serializer_macro = EnumConfig::generate_enum_serializer_macro_static(&package_enum_types);
+        let enum_serializer_macro =
+            EnumConfig::generate_enum_serializer_macro_static(&package_enum_types);
         let single_deserializer = EnumConfig::generate_single_enum_deserializer_static();
         let option_deserializer = EnumConfig::generate_option_enum_deserializer_static();
         let repeated_deserializer = EnumConfig::generate_repeated_enum_deserializer_static();
@@ -617,7 +618,9 @@ impl EnumConfig {
         const SKIP_NONE: &str = "#[serde(skip_serializing_if = \"Option::is_none\")]";
         const SKIP_EMPTY: &str = "#[serde(skip_serializing_if = \"String::is_empty\")]";
         let field_path = format!("{}.{}", message_name, field.name());
-        let skip_attribute = if field.proto3_optional() || (field.label() == Label::Optional && field.r#type() == Type::Message) {
+        let skip_attribute = if field.proto3_optional()
+            || (field.label() == Label::Optional && field.r#type() == Type::Message)
+        {
             Some(SKIP_NONE)
         } else if field.r#type() == Type::String && field.label() != Label::Repeated {
             Some(SKIP_EMPTY)
@@ -655,13 +658,18 @@ impl EnumConfig {
 
         // Parse the generated strings as token streams for quote
         let enum_list_tokens: proc_macro2::TokenStream = enum_list_macro.parse().unwrap();
-        let enum_serializer_tokens: proc_macro2::TokenStream = enum_serializer_macro.parse().unwrap();
-        let single_deserializer_tokens: proc_macro2::TokenStream = single_deserializer.parse().unwrap();
-        let option_deserializer_tokens: proc_macro2::TokenStream = option_deserializer.parse().unwrap();
-        let repeated_deserializer_tokens: proc_macro2::TokenStream = repeated_deserializer.parse().unwrap();
+        let enum_serializer_tokens: proc_macro2::TokenStream =
+            enum_serializer_macro.parse().unwrap();
+        let single_deserializer_tokens: proc_macro2::TokenStream =
+            single_deserializer.parse().unwrap();
+        let option_deserializer_tokens: proc_macro2::TokenStream =
+            option_deserializer.parse().unwrap();
+        let repeated_deserializer_tokens: proc_macro2::TokenStream =
+            repeated_deserializer.parse().unwrap();
         let single_serializer_tokens: proc_macro2::TokenStream = single_serializer.parse().unwrap();
         let option_serializer_tokens: proc_macro2::TokenStream = option_serializer.parse().unwrap();
-        let repeated_serializer_tokens: proc_macro2::TokenStream = repeated_serializer.parse().unwrap();
+        let repeated_serializer_tokens: proc_macro2::TokenStream =
+            repeated_serializer.parse().unwrap();
 
         quote! {
             // Auto-generated enum deserializer module
@@ -719,12 +727,12 @@ impl EnumConfig {
         // Enums directly in this message
         for enum_desc in &message.enum_type {
             let enum_name = enum_desc.name();
-            enum_types.push(format!("{}{}::{}", module_path, message_module, enum_name));
+            enum_types.push(format!("{module_path}{message_module}::{enum_name}"));
         }
 
         // Recursively check nested messages
         for nested_message in &message.nested_type {
-            let nested_path = format!("{}{}::", module_path, message_module);
+            let nested_path = format!("{module_path}{message_module}::");
             enum_types.extend(Self::extract_nested_enums_static(
                 nested_message,
                 &nested_path,
@@ -759,7 +767,7 @@ impl EnumConfig {
                 // Parse the enum type path as tokens (e.g., "MyEnum" or "module::MyEnum")
                 enum_type
                     .parse()
-                    .unwrap_or_else(|e| panic!("Invalid enum type path '{}': {}", enum_type, e))
+                    .unwrap_or_else(|e| panic!("Invalid enum type path '{enum_type}': {e}"))
             })
             .collect();
 
@@ -790,7 +798,7 @@ impl EnumConfig {
                 // Parse the enum type path as tokens (e.g., "MyEnum" or "module::MyEnum")
                 enum_type
                     .parse()
-                    .unwrap_or_else(|e| panic!("Invalid enum type path '{}': {}", enum_type, e))
+                    .unwrap_or_else(|e| panic!("Invalid enum type path '{enum_type}': {e}"))
             })
             .collect();
 
@@ -967,7 +975,7 @@ impl EnumConfig {
     fn generate_repeated_enum_serializer_static() -> String {
         quote! {
             #[allow(dead_code)]
-            pub fn serialize_repeated_enum_as_string<S>(values: &Vec<i32>, serializer: S) -> Result<S::Ok, S::Error>
+            pub fn serialize_repeated_enum_as_string<S>(values: &[i32], serializer: S) -> Result<S::Ok, S::Error>
             where
                 S: serde::Serializer,
             {

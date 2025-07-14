@@ -37,7 +37,7 @@ impl hello_world::payment_connector_server::PaymentConnector for Server {
         request: tonic::Request<hello_world::PaymentRequest>,
     ) -> Result<tonic::Response<hello_world::PaymentResponse>, tonic::Status> {
         let req = request.into_inner();
-        
+
         // Simulate payment processing with error case
         let response = if req.receipt == "duplicate_receipt" {
             hello_world::PaymentResponse {
@@ -69,11 +69,12 @@ impl hello_world::payment_connector_server::PaymentConnector for Server {
                 network_txn_id: "net_789".to_string(),
                 response_ref_id: "ref_456".to_string(),
                 incremental_authorization_allowed: true,
-                raw_connector_response: r#"{"status":"success","transaction_id":"txn_123456"}"#.to_string(),
+                raw_connector_response: r#"{"status":"success","transaction_id":"txn_123456"}"#
+                    .to_string(),
                 error_detail: None,
             }
         };
-        
+
         Ok(tonic::Response::new(response))
     }
 
@@ -82,7 +83,7 @@ impl hello_world::payment_connector_server::PaymentConnector for Server {
         request: tonic::Request<hello_world::StatusRequest>,
     ) -> Result<tonic::Response<hello_world::PaymentResponse>, tonic::Status> {
         let _req = request.into_inner();
-        
+
         let response = hello_world::PaymentResponse {
             transaction_id: "txn_123456".to_string(),
             status: hello_world::PaymentStatus::Pending.into(),
@@ -95,7 +96,7 @@ impl hello_world::payment_connector_server::PaymentConnector for Server {
             raw_connector_response: r#"{"status":"pending"}"#.to_string(),
             error_detail: None,
         };
-        
+
         Ok(tonic::Response::new(response))
     }
 }
@@ -105,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Combine both service handlers
     let greeter_router = hello_world::greeter_handler(Server);
     let payment_router = hello_world::payment_connector_handler(Server);
-    
+
     // Merge the routers
     let combined_router = greeter_router.merge(payment_router);
 
@@ -161,11 +162,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Response: {}", serde_json::to_string_pretty(&json_body2)?);
     println!("✅ Status shows as 'BAD_REQUEST_ERROR' (string), empty fields omitted\n");
 
-    // Test 3: Payment Service - Success Case 
+    // Test 3: Payment Service - Success Case
     println!("🔸 Testing Payment Service - Success Case:");
     let success_payment_request = serde_json::json!({
         "order_id": "order_456",
-        "receipt": "unique_receipt", 
+        "receipt": "unique_receipt",
         "amount": 250.75,
         "currency": "USD",
         "customer_id": "cust_456",
