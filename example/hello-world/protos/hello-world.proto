@@ -16,6 +16,12 @@ service PaymentConnector {
   rpc GetPaymentStatus (StatusRequest) returns (PaymentResponse) {}
 }
 
+// Test service for enum conflict resolution
+service EnumTestService {
+  // Test enum serialization conflicts
+  rpc TestEnumConflicts (ConflictTestRequest) returns (ConflictTestResponse) {}
+}
+
 // Enum for greeting types
 enum GreetingType {
   FORMAL = 0;
@@ -36,6 +42,22 @@ enum PaymentStatus {
   FORBIDDEN_ERROR = 23;
   NOT_FOUND_ERROR = 24;
   DUPLICATE_ORDER_ERROR = 25;
+}
+
+// Authentication status enum - deliberately has same values as PaymentStatus to test conflict resolution
+enum AuthenticationStatus {
+  option allow_alias = true;    // Allow duplicate values within this enum
+  AUTHENTICATION_SUCCESS = 0;  // Same as PaymentStatus::SUCCESS
+  AUTHENTICATION_PENDING = 1;  // Same as PaymentStatus::PENDING
+  DISCOVER = 1;                 // Same value as AUTHENTICATION_PENDING - this tests the original issue
+  AUTHENTICATION_FAILED = 2;   // Same as PaymentStatus::FAILED
+}
+
+// Processing status enum - more conflicts to thoroughly test
+enum ProcessingStatus {
+  COMPLETED = 0;                // Same as SUCCESS
+  PROCESSING = 1;               // Same as PENDING and AUTHENTICATION_PENDING
+  ERROR = 2;                    // Same as FAILED
 }
 
 // The request message containing the user's name
@@ -96,4 +118,69 @@ message ErrorDetail {
   string reason = 4;
   string source = 5;
   map<string, string> metadata = 6;
+}
+
+// Test message with conflicting enum values to verify field-specific serialization
+message ConflictTestRequest {
+  PaymentStatus payment_status = 1;        // Value 1 = PENDING
+  AuthenticationStatus auth_status = 2;     // Value 1 = AUTHENTICATION_PENDING or DISCOVER
+  ProcessingStatus processing_status = 3;   // Value 1 = PROCESSING
+  
+  // Optional and repeated fields for comprehensive testing
+  optional PaymentStatus optional_payment = 4;
+  repeated AuthenticationStatus auth_history = 5;
+  repeated ProcessingStatus processing_steps = 6;
+}
+
+// Response message for conflict testing
+message ConflictTestResponse {
+  bool test_passed = 1;
+  string serialized_payment = 2;      // Should be "PENDING" 
+  string serialized_auth = 3;         // Should be "AUTHENTICATION_PENDING" or "DISCOVER"
+  string serialized_processing = 4;   // Should be "PROCESSING"
+  repeated string auth_history_strings = 5;
+}
+
+// Message with nested enums to test nested enum serialization
+message NestedEnumTestMessage {
+  // Nested enum that conflicts with top-level enum values
+  enum NestedStatus {
+    NESTED_SUCCESS = 0;    // Same value as top-level SUCCESS enums
+    NESTED_PENDING = 1;    // Same value as top-level PENDING enums  
+    NESTED_FAILED = 2;     // Same value as top-level FAILED enums
+  }
+  
+  // Another nested enum with different naming
+  enum InnerState {
+    INACTIVE = 0;
+    ACTIVE = 1;
+    SUSPENDED = 2;
+  }
+  
+  NestedStatus status = 1;
+  InnerState state = 2;
+  optional NestedStatus optional_status = 3;
+  repeated InnerState state_history = 4;
+}
+
+// Another message with nested enums for thorough testing
+message DeepNestedMessage {
+  enum Level1 {
+    L1_INIT = 0;
+    L1_READY = 1;
+  }
+  
+  message InnerMessage {
+    enum Level2 {
+      L2_START = 0;
+      L2_PROCESS = 1;
+      L2_END = 2;
+    }
+    
+    Level2 inner_status = 1;
+    repeated Level2 process_steps = 2;
+  }
+  
+  Level1 outer_status = 1;
+  InnerMessage inner = 2;
 }
