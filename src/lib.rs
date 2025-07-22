@@ -527,7 +527,7 @@ impl BridgeGenerator {
 
     /// Check if a name looks like a protobuf message name (PascalCase)
     fn is_message_name(name: &str) -> bool {
-        name.chars().next().map_or(false, |c| c.is_uppercase())
+        name.chars().next().is_some_and(|c| c.is_uppercase())
     }
 
     /// Generate field-specific enum serialization/deserialization functions
@@ -855,14 +855,14 @@ impl EnumConfig {
             FieldLabel::Optional => {
                 // For optional fields, check if prost would generate Option<T> or just T with default
                 if field.proto3_optional() {
-                    format!("#[serde(serialize_with = \"{}::serialize_option_{}_as_string\", deserialize_with = \"{}::deserialize_option_{}_from_string\", default)]", enum_deserializer_path, field_id, enum_deserializer_path, field_id)
+                    format!("#[serde(serialize_with = \"{enum_deserializer_path}::serialize_option_{field_id}_as_string\", deserialize_with = \"{enum_deserializer_path}::deserialize_option_{field_id}_from_string\", default)]")
                 } else {
                     // In proto3, scalar types have implicit defaults, so use regular deserializer
-                    format!("#[serde(serialize_with = \"{}::serialize_{}_as_string\", deserialize_with = \"{}::deserialize_{}_from_string\", default)]", enum_deserializer_path, field_id, enum_deserializer_path, field_id)
+                    format!("#[serde(serialize_with = \"{enum_deserializer_path}::serialize_{field_id}_as_string\", deserialize_with = \"{enum_deserializer_path}::deserialize_{field_id}_from_string\", default)]")
                 }
             },
-            FieldLabel::Required => format!("#[serde(serialize_with = \"{}::serialize_{}_as_string\", deserialize_with = \"{}::deserialize_{}_from_string\")]", enum_deserializer_path, field_id, enum_deserializer_path, field_id),
-            FieldLabel::Repeated => format!("#[serde(serialize_with = \"{}::serialize_repeated_{}_as_string\", deserialize_with = \"{}::deserialize_repeated_{}_from_string\", default)]", enum_deserializer_path, field_id, enum_deserializer_path, field_id),
+            FieldLabel::Required => format!("#[serde(serialize_with = \"{enum_deserializer_path}::serialize_{field_id}_as_string\", deserialize_with = \"{enum_deserializer_path}::deserialize_{field_id}_from_string\")]"),
+            FieldLabel::Repeated => format!("#[serde(serialize_with = \"{enum_deserializer_path}::serialize_repeated_{field_id}_as_string\", deserialize_with = \"{enum_deserializer_path}::deserialize_repeated_{field_id}_from_string\", default)]"),
         };
 
         config.field_attribute(&field_path, &serde_attribute);
