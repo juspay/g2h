@@ -1364,9 +1364,37 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
                                 (headers, extension, body).into_response()
                             },
                             Err(status) => {
-                                let (parts, body) = status.into_http::<::axum::body::Body>().into_parts();
+                                let code = match status.code() {
+                                    ::tonic::Code::Ok => ::http::StatusCode::OK,
+                                    ::tonic::Code::InvalidArgument => ::http::StatusCode::BAD_REQUEST,
+                                    ::tonic::Code::NotFound => ::http::StatusCode::NOT_FOUND,
+                                    ::tonic::Code::AlreadyExists => ::http::StatusCode::CONFLICT,
+                                    ::tonic::Code::PermissionDenied => ::http::StatusCode::FORBIDDEN,
+                                    ::tonic::Code::Unauthenticated => ::http::StatusCode::UNAUTHORIZED,
+                                    ::tonic::Code::ResourceExhausted => ::http::StatusCode::TOO_MANY_REQUESTS,
+                                    ::tonic::Code::FailedPrecondition => ::http::StatusCode::PRECONDITION_FAILED,
+                                    ::tonic::Code::Unimplemented => ::http::StatusCode::NOT_IMPLEMENTED,
+                                    ::tonic::Code::Unavailable => ::http::StatusCode::SERVICE_UNAVAILABLE,
+                                    ::tonic::Code::DeadlineExceeded => ::http::StatusCode::REQUEST_TIMEOUT,
+                                    ::tonic::Code::Cancelled => ::http::StatusCode::REQUEST_TIMEOUT,
+                                    ::tonic::Code::Unknown => ::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    ::tonic::Code::OutOfRange => ::http::StatusCode::RANGE_NOT_SATISFIABLE,
+                                    ::tonic::Code::Internal => ::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    ::tonic::Code::DataLoss => ::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    ::tonic::Code::Aborted => ::http::StatusCode::CONFLICT,
+                                };
 
-                                ::http::response::Response::from_parts(parts, ::axum::body::Body::new(body))
+                                // Create JSON error response
+                                let error_body = ErrorResponse {
+                                    error: ErrorDetails {
+                                        code: status.code().to_string(),
+                                        message: status.message().to_string(),
+                                    }
+                                };
+
+                                let body = ::axum::Json(error_body);
+
+                                (code, body).into_response()
                             }
                         }
 
@@ -1385,6 +1413,24 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
 
     fn finalize_package(&mut self, package: &str, buf: &mut String) {
         self.inner.finalize_package(package, buf);
+
+        // Add error response structures once per package
+        let error_structs = quote! {
+            // Error response structures for HTTP endpoints
+            #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+            pub struct ErrorResponse {
+                pub error: ErrorDetails,
+            }
+
+            #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+            pub struct ErrorDetails {
+                pub code: String,
+                pub message: String,
+            }
+        };
+        
+        buf.push('\n');
+        buf.push_str(&error_structs.to_string());
 
         // If string enums are enabled, add the enum deserializer module at the end of each package
         if self.enable_string_enums {
