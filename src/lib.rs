@@ -1428,7 +1428,7 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
                 pub message: String,
             }
         };
-        
+
         buf.push('\n');
         buf.push_str(&error_structs.to_string());
 
