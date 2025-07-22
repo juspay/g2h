@@ -362,28 +362,30 @@ impl BridgeGenerator {
     }
 
     /// Generate enum deserializer code for a specific package with field-specific serializers
-    /// 
+    ///
     /// This method creates type-safe enum serialization functions that prevent conflicts
     /// between different enums that might have the same integer values. Each enum field
     /// gets its own dedicated serializer/deserializer functions.
-    /// 
+    ///
     /// # Arguments
     /// * `file_descriptor_set` - The protobuf file descriptor set containing enum definitions
     /// * `target_package` - The specific package to generate serializers for
-    /// 
+    ///
     /// # Returns
     /// A string containing the generated Rust code with field-specific enum functions
     fn generate_package_specific_enum_deserializer_code(
         file_descriptor_set: &FileDescriptorSet,
         target_package: &str,
     ) -> String {
-        let package_enum_fields = Self::extract_package_enum_fields_static(file_descriptor_set, target_package);
+        let package_enum_fields =
+            Self::extract_package_enum_fields_static(file_descriptor_set, target_package);
 
         if package_enum_fields.is_empty() {
             return String::new();
         }
 
-        let field_specific_functions = Self::generate_field_specific_enum_functions_static(&package_enum_fields);
+        let field_specific_functions =
+            Self::generate_field_specific_enum_functions_static(&package_enum_fields);
 
         // Parse the generated string as token stream for quote
         let field_functions_tokens: proc_macro2::TokenStream = field_specific_functions
@@ -407,7 +409,8 @@ impl BridgeGenerator {
     fn extract_package_enum_fields_static(
         file_descriptor_set: &FileDescriptorSet,
         target_package: &str,
-    ) -> Vec<(String, String, String)> { // (field_id, enum_type, field_label)
+    ) -> Vec<(String, String, String)> {
+        // (field_id, enum_type, field_label)
         let mut enum_fields = Vec::new();
 
         for file in &file_descriptor_set.file {
@@ -453,11 +456,17 @@ impl BridgeGenerator {
             if field.r#type() == Type::Enum {
                 let field_id = format!("{}_{}", current_path, field.name().to_snake_case());
                 let enum_type = field.type_name().trim_start_matches('.');
-                
+
                 let enum_path = Self::resolve_enum_path(enum_type);
-                
+
                 let field_label = match field.label() {
-                    Label::Optional => if field.proto3_optional() { "Option" } else { "Single" },
+                    Label::Optional => {
+                        if field.proto3_optional() {
+                            "Option"
+                        } else {
+                            "Single"
+                        }
+                    }
                     Label::Required => "Single",
                     Label::Repeated => "Repeated",
                 };
@@ -468,7 +477,11 @@ impl BridgeGenerator {
 
         // Recursively process nested message types
         for nested_message in &message.nested_type {
-            Self::extract_enum_fields_from_message_with_path_static(nested_message, enum_fields, &current_path);
+            Self::extract_enum_fields_from_message_with_path_static(
+                nested_message,
+                enum_fields,
+                &current_path,
+            );
         }
     }
 
@@ -479,7 +492,7 @@ impl BridgeGenerator {
         }
 
         let parts: Vec<&str> = enum_type.split('.').collect();
-        
+
         match parts.len() {
             0 | 1 => parts.last().unwrap_or(&"UnknownEnum").to_string(),
             2 => {
@@ -490,17 +503,17 @@ impl BridgeGenerator {
             _ => {
                 // Three or more parts - need to determine the structure
                 let enum_name = parts[parts.len() - 1];
-                
+
                 // Look for message parts (PascalCase) vs package parts (lowercase/version)
                 let mut message_parts = Vec::new();
                 let start_idx = 1; // Skip the package name
-                
-                for &part in &parts[start_idx..parts.len()-1] {
+
+                for &part in &parts[start_idx..parts.len() - 1] {
                     if Self::is_message_name(part) {
                         message_parts.push(part.to_snake_case());
                     }
                 }
-                
+
                 if message_parts.is_empty() {
                     // No message parts found, treat as package-level enum
                     enum_name.to_string()
@@ -524,7 +537,8 @@ impl BridgeGenerator {
         let mut functions = String::new();
 
         for (field_id, enum_name, field_label) in enum_fields {
-            let enum_ident: proc_macro2::TokenStream = enum_name.parse()
+            let enum_ident: proc_macro2::TokenStream = enum_name
+                .parse()
                 .unwrap_or_else(|e| panic!("Invalid enum type path '{enum_name}': {e}"));
 
             let function_code = match field_label.as_str() {
@@ -541,10 +555,13 @@ impl BridgeGenerator {
     }
 
     /// Generate serializer/deserializer functions for a single enum field
-    fn generate_single_enum_functions(field_id: &str, enum_ident: &proc_macro2::TokenStream) -> String {
+    fn generate_single_enum_functions(
+        field_id: &str,
+        enum_ident: &proc_macro2::TokenStream,
+    ) -> String {
         let serialize_fn = quote::format_ident!("serialize_{}_as_string", field_id);
         let deserialize_fn = quote::format_ident!("deserialize_{}_from_string", field_id);
-        
+
         quote! {
             #[allow(dead_code)]
             pub fn #serialize_fn<S>(value: &i32, serializer: S) -> Result<S::Ok, S::Error>
@@ -589,10 +606,13 @@ impl BridgeGenerator {
     }
 
     /// Generate serializer/deserializer functions for an optional enum field
-    fn generate_option_enum_functions(field_id: &str, enum_ident: &proc_macro2::TokenStream) -> String {
+    fn generate_option_enum_functions(
+        field_id: &str,
+        enum_ident: &proc_macro2::TokenStream,
+    ) -> String {
         let serialize_fn = quote::format_ident!("serialize_option_{}_as_string", field_id);
         let deserialize_fn = quote::format_ident!("deserialize_option_{}_from_string", field_id);
-        
+
         quote! {
             #[allow(dead_code)]
             pub fn #serialize_fn<S>(value: &Option<i32>, serializer: S) -> Result<S::Ok, S::Error>
@@ -642,10 +662,13 @@ impl BridgeGenerator {
     }
 
     /// Generate serializer/deserializer functions for a repeated enum field
-    fn generate_repeated_enum_functions(field_id: &str, enum_ident: &proc_macro2::TokenStream) -> String {
+    fn generate_repeated_enum_functions(
+        field_id: &str,
+        enum_ident: &proc_macro2::TokenStream,
+    ) -> String {
         let serialize_fn = quote::format_ident!("serialize_repeated_{}_as_string", field_id);
         let deserialize_fn = quote::format_ident!("deserialize_repeated_{}_from_string", field_id);
-        
+
         quote! {
             #[allow(dead_code)]
             pub fn #serialize_fn<S>(values: &[i32], serializer: S) -> Result<S::Ok, S::Error>
@@ -698,7 +721,6 @@ impl BridgeGenerator {
             }
         }.to_string()
     }
-
 }
 
 /// Configuration helper for building prost config with automatic enum detection
@@ -779,13 +801,25 @@ impl EnumConfig {
         // Process all fields in the message
         for field in &message.field {
             if Self::is_enum_field_static(field) {
-                config = Self::add_enum_deserializer_with_path_static(config, &current_path, message_name, field, package, is_nested);
+                config = Self::add_enum_deserializer_with_path_static(
+                    config,
+                    &current_path,
+                    message_name,
+                    field,
+                    package,
+                    is_nested,
+                );
             }
         }
 
         // Recursively process nested message types
         for nested_message in &message.nested_type {
-            config = Self::process_message_descriptor_with_path_static(config, nested_message, package, &current_path);
+            config = Self::process_message_descriptor_with_path_static(
+                config,
+                nested_message,
+                package,
+                &current_path,
+            );
         }
 
         config
@@ -795,7 +829,6 @@ impl EnumConfig {
         // Check if the field type is an enum
         field.r#type() == Type::Enum
     }
-
 
     fn add_enum_deserializer_with_path_static(
         mut config: prost_build::Config,
@@ -807,7 +840,7 @@ impl EnumConfig {
     ) -> prost_build::Config {
         // Use the actual message name for the field_path (what prost expects)
         let field_path = format!("{}.{}", message_name, field.name());
-        
+
         // Create field-specific serializer function names using the full path
         let field_id = format!("{}_{}", message_path, field.name().to_snake_case());
 
@@ -1007,7 +1040,6 @@ impl EnumConfig {
 
         enum_types
     }
-
 
     fn generate_enum_list_macro_static(enum_types: &[String]) -> String {
         // Convert enum type strings to identifiers for quote

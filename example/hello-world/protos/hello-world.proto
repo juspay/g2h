@@ -47,10 +47,10 @@ enum PaymentStatus {
 // Authentication status enum - deliberately has same values as PaymentStatus to test conflict resolution
 enum AuthenticationStatus {
   option allow_alias = true;    // Allow duplicate values within this enum
-  AUTHENTICATION_SUCCESS = 0;  // Same as PaymentStatus::SUCCESS
-  AUTHENTICATION_PENDING = 1;  // Same as PaymentStatus::PENDING
-  DISCOVER = 1;                 // Same value as AUTHENTICATION_PENDING - this tests the original issue
-  AUTHENTICATION_FAILED = 2;   // Same as PaymentStatus::FAILED
+  VERIFIED = 0;  // Same as PaymentStatus::SUCCESS
+  VERIFYING = 1;  // Same as PaymentStatus::PENDING
+  DISCOVER = 1;                 // Same value as VERIFYING - this tests the original issue
+  REJECTED = 2;   // Same as PaymentStatus::FAILED
 }
 
 // Processing status enum - more conflicts to thoroughly test
@@ -145,9 +145,9 @@ message ConflictTestResponse {
 message NestedEnumTestMessage {
   // Nested enum that conflicts with top-level enum values
   enum NestedStatus {
-    NESTED_SUCCESS = 0;    // Same value as top-level SUCCESS enums
-    NESTED_PENDING = 1;    // Same value as top-level PENDING enums  
-    NESTED_FAILED = 2;     // Same value as top-level FAILED enums
+    DONE = 0;    // Same value as top-level SUCCESS enums
+    WORKING = 1;    // Same value as top-level PENDING enums  
+    BROKEN = 2;     // Same value as top-level FAILED enums
   }
   
   // Another nested enum with different naming
@@ -172,9 +172,9 @@ message DeepNestedMessage {
   
   message InnerMessage {
     enum Level2 {
-      L2_START = 0;
-      L2_PROCESS = 1;
-      L2_END = 2;
+      INITIAL = 0;
+      ACTIVE = 1;
+      FINAL = 2;
     }
     
     Level2 inner_status = 1;

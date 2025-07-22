@@ -1,8 +1,7 @@
 /// Tests for g2h internal enum processing logic
-/// 
+///
 /// These tests verify that the enum field extraction and path resolution
 /// work correctly for different protobuf structures.
-
 #[cfg(test)]
 mod g2h_tests {
 
@@ -13,7 +12,7 @@ mod g2h_tests {
         }
 
         let parts: Vec<&str> = enum_type.split('.').collect();
-        
+
         match parts.len() {
             0 | 1 => parts.last().unwrap_or(&"UnknownEnum").to_string(),
             2 => {
@@ -24,7 +23,7 @@ mod g2h_tests {
                 // Three or more parts like "package.Message.EnumName" or "ucs.v2.Currency"
                 let potential_parent = parts[parts.len() - 2];
                 let enum_name = parts[parts.len() - 1];
-                
+
                 // Check if parent looks like a message (PascalCase) vs a package component
                 if is_message_name(potential_parent) {
                     // Message-nested enum: "package.Message.EnumName" -> "message::EnumName"
@@ -38,7 +37,7 @@ mod g2h_tests {
     }
 
     fn is_message_name(name: &str) -> bool {
-        name.chars().next().map_or(false, |c| c.is_uppercase())
+        name.chars().next().is_some_and(|c| c.is_uppercase())
     }
 
     fn to_snake_case(input: &str) -> String {
@@ -52,22 +51,31 @@ mod g2h_tests {
         let test_cases = vec![
             // Simple enum name
             ("PaymentStatus", "PaymentStatus"),
-            
             // Package-level enum
             ("hello_world.PaymentStatus", "PaymentStatus"),
             ("ucs.v2.Currency", "Currency"),
             ("package.EnumName", "EnumName"),
-            
             // Message-nested enum (PascalCase parent)
-            ("hello_world.HelloReply.ResponseStatus", "hello_reply::ResponseStatus"),
-            ("package.UserProfile.AccountStatus", "user_profile::AccountStatus"),
-            ("test.PaymentRequest.PaymentType", "payment_request::PaymentType"),
-            
+            (
+                "hello_world.HelloReply.ResponseStatus",
+                "hello_reply::ResponseStatus",
+            ),
+            (
+                "package.UserProfile.AccountStatus",
+                "user_profile::AccountStatus",
+            ),
+            (
+                "test.PaymentRequest.PaymentType",
+                "payment_request::PaymentType",
+            ),
             // Edge cases
             ("", ""),
             ("single", "single"),
             ("a.b", "b"),
-            ("namespace.v1.service.MessageName.EnumName", "message_name::EnumName"),
+            (
+                "namespace.v1.service.MessageName.EnumName",
+                "message_name::EnumName",
+            ),
         ];
 
         for (input, expected) in test_cases {
@@ -81,16 +89,16 @@ mod g2h_tests {
     #[test]
     fn test_message_name_detection() {
         let test_cases = vec![
-            ("HelloReply", true),      // PascalCase message
-            ("PaymentRequest", true),  // PascalCase message
-            ("UserProfile", true),     // PascalCase message
-            ("v2", false),             // Package component
-            ("ucs", false),            // Package component
-            ("hello_world", false),    // Package component
-            ("", false),               // Empty string
-            ("lowercase", false),      // Lowercase
-            ("UPPERCASE", true),       // All uppercase (treated as message)
-            ("mixedCase", false),      // camelCase (not PascalCase)
+            ("HelloReply", true),     // PascalCase message
+            ("PaymentRequest", true), // PascalCase message
+            ("UserProfile", true),    // PascalCase message
+            ("v2", false),            // Package component
+            ("ucs", false),           // Package component
+            ("hello_world", false),   // Package component
+            ("", false),              // Empty string
+            ("lowercase", false),     // Lowercase
+            ("UPPERCASE", true),      // All uppercase (treated as message)
+            ("mixedCase", false),     // camelCase (not PascalCase)
         ];
 
         for (input, expected) in test_cases {
@@ -108,12 +116,12 @@ mod g2h_tests {
             ("PaymentRequest", "payment_request"),
             ("UserProfile", "user_profile"),
             ("ResponseStatus", "response_status"),
-            ("XMLHttpRequest", "xml_http_request"),  // heck produces better output
-            ("APIKey", "api_key"),                   // heck produces better output
+            ("XMLHttpRequest", "xml_http_request"), // heck produces better output
+            ("APIKey", "api_key"),                  // heck produces better output
             ("lowercase", "lowercase"),
             ("", ""),
             ("A", "a"),
-            ("AB", "ab"),                            // heck produces better output
+            ("AB", "ab"), // heck produces better output
         ];
 
         for (input, expected) in test_cases {
@@ -128,41 +136,80 @@ mod g2h_tests {
     #[test]
     fn test_enum_field_extraction_simulation() {
         // Simulate the data structure that extract_enum_fields_from_message_static would create
-        let mut extracted_fields = Vec::new();
-
-        // Simulate different message structures from our test proto
-        
         // ConflictTestRequest fields
-        extracted_fields.push(("conflict_test_request_payment_status".to_string(), "PaymentStatus".to_string(), "Single".to_string()));
-        extracted_fields.push(("conflict_test_request_auth_status".to_string(), "AuthenticationStatus".to_string(), "Single".to_string()));
-        extracted_fields.push(("conflict_test_request_processing_status".to_string(), "ProcessingStatus".to_string(), "Single".to_string()));
-        extracted_fields.push(("conflict_test_request_optional_payment".to_string(), "PaymentStatus".to_string(), "Option".to_string()));
-        extracted_fields.push(("conflict_test_request_auth_history".to_string(), "AuthenticationStatus".to_string(), "Repeated".to_string()));
-        extracted_fields.push(("conflict_test_request_processing_steps".to_string(), "ProcessingStatus".to_string(), "Repeated".to_string()));
-        
-        // HelloReply nested enum
-        extracted_fields.push(("hello_reply_status".to_string(), "hello_reply::ResponseStatus".to_string(), "Single".to_string()));
+        let extracted_fields = vec![
+            (
+                "conflict_test_request_payment_status".to_string(),
+                "PaymentStatus".to_string(),
+                "Single".to_string(),
+            ),
+            (
+                "conflict_test_request_auth_status".to_string(),
+                "AuthenticationStatus".to_string(),
+                "Single".to_string(),
+            ),
+            (
+                "conflict_test_request_processing_status".to_string(),
+                "ProcessingStatus".to_string(),
+                "Single".to_string(),
+            ),
+            (
+                "conflict_test_request_optional_payment".to_string(),
+                "PaymentStatus".to_string(),
+                "Option".to_string(),
+            ),
+            (
+                "conflict_test_request_auth_history".to_string(),
+                "AuthenticationStatus".to_string(),
+                "Repeated".to_string(),
+            ),
+            (
+                "conflict_test_request_processing_steps".to_string(),
+                "ProcessingStatus".to_string(),
+                "Repeated".to_string(),
+            ),
+            // HelloReply nested enum
+            (
+                "hello_reply_status".to_string(),
+                "hello_reply::ResponseStatus".to_string(),
+                "Single".to_string(),
+            ),
+        ];
 
         // Verify field ID generation follows expected pattern
-        assert!(extracted_fields.iter().any(|(field_id, _, _)| field_id == "conflict_test_request_payment_status"));
-        assert!(extracted_fields.iter().any(|(field_id, _, _)| field_id == "conflict_test_request_auth_status"));
-        
+        assert!(extracted_fields
+            .iter()
+            .any(|(field_id, _, _)| field_id == "conflict_test_request_payment_status"));
+        assert!(extracted_fields
+            .iter()
+            .any(|(field_id, _, _)| field_id == "conflict_test_request_auth_status"));
+
         // Verify enum type resolution
-        let payment_enum = extracted_fields.iter().find(|(field_id, _, _)| field_id == "conflict_test_request_payment_status");
+        let payment_enum = extracted_fields
+            .iter()
+            .find(|(field_id, _, _)| field_id == "conflict_test_request_payment_status");
         assert_eq!(payment_enum.unwrap().1, "PaymentStatus");
-        
-        let auth_enum = extracted_fields.iter().find(|(field_id, _, _)| field_id == "conflict_test_request_auth_status");
+
+        let auth_enum = extracted_fields
+            .iter()
+            .find(|(field_id, _, _)| field_id == "conflict_test_request_auth_status");
         assert_eq!(auth_enum.unwrap().1, "AuthenticationStatus");
-        
+
         // Verify nested enum path
-        let nested_enum = extracted_fields.iter().find(|(field_id, _, _)| field_id == "hello_reply_status");
+        let nested_enum = extracted_fields
+            .iter()
+            .find(|(field_id, _, _)| field_id == "hello_reply_status");
         assert_eq!(nested_enum.unwrap().1, "hello_reply::ResponseStatus");
-        
+
         // Verify field labels
-        let optional_field = extracted_fields.iter().find(|(field_id, _, _)| field_id == "conflict_test_request_optional_payment");
+        let optional_field = extracted_fields
+            .iter()
+            .find(|(field_id, _, _)| field_id == "conflict_test_request_optional_payment");
         assert_eq!(optional_field.unwrap().2, "Option");
-        
-        let repeated_field = extracted_fields.iter().find(|(field_id, _, _)| field_id == "conflict_test_request_auth_history");
+
+        let repeated_field = extracted_fields
+            .iter()
+            .find(|(field_id, _, _)| field_id == "conflict_test_request_auth_history");
         assert_eq!(repeated_field.unwrap().2, "Repeated");
 
         println!("✅ Enum field extraction simulation test passed!");
@@ -176,18 +223,30 @@ mod g2h_tests {
     #[test]
     fn test_generated_function_names() {
         let test_cases = vec![
-            ("conflict_test_request_payment_status", "Single", vec![
-                "serialize_conflict_test_request_payment_status_as_string",
-                "deserialize_conflict_test_request_payment_status_from_string"
-            ]),
-            ("conflict_test_request_optional_payment", "Option", vec![
-                "serialize_option_conflict_test_request_optional_payment_as_string",
-                "deserialize_option_conflict_test_request_optional_payment_from_string"
-            ]),
-            ("conflict_test_request_auth_history", "Repeated", vec![
-                "serialize_repeated_conflict_test_request_auth_history_as_string",
-                "deserialize_repeated_conflict_test_request_auth_history_from_string"
-            ]),
+            (
+                "conflict_test_request_payment_status",
+                "Single",
+                vec![
+                    "serialize_conflict_test_request_payment_status_as_string",
+                    "deserialize_conflict_test_request_payment_status_from_string",
+                ],
+            ),
+            (
+                "conflict_test_request_optional_payment",
+                "Option",
+                vec![
+                    "serialize_option_conflict_test_request_optional_payment_as_string",
+                    "deserialize_option_conflict_test_request_optional_payment_from_string",
+                ],
+            ),
+            (
+                "conflict_test_request_auth_history",
+                "Repeated",
+                vec![
+                    "serialize_repeated_conflict_test_request_auth_history_as_string",
+                    "deserialize_repeated_conflict_test_request_auth_history_from_string",
+                ],
+            ),
         ];
 
         for (field_id, field_label, expected_functions) in test_cases {
