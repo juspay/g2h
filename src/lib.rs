@@ -1368,20 +1368,16 @@ impl prost_build::ServiceGenerator for BridgeGenerator {
                                     ::tonic::Code::Ok => ::http::StatusCode::OK,
                                     ::tonic::Code::InvalidArgument => ::http::StatusCode::BAD_REQUEST,
                                     ::tonic::Code::NotFound => ::http::StatusCode::NOT_FOUND,
-                                    ::tonic::Code::AlreadyExists => ::http::StatusCode::CONFLICT,
+                                    ::tonic::Code::AlreadyExists | ::tonic::Code::Aborted => ::http::StatusCode::CONFLICT,
                                     ::tonic::Code::PermissionDenied => ::http::StatusCode::FORBIDDEN,
                                     ::tonic::Code::Unauthenticated => ::http::StatusCode::UNAUTHORIZED,
                                     ::tonic::Code::ResourceExhausted => ::http::StatusCode::TOO_MANY_REQUESTS,
                                     ::tonic::Code::FailedPrecondition => ::http::StatusCode::PRECONDITION_FAILED,
                                     ::tonic::Code::Unimplemented => ::http::StatusCode::NOT_IMPLEMENTED,
                                     ::tonic::Code::Unavailable => ::http::StatusCode::SERVICE_UNAVAILABLE,
-                                    ::tonic::Code::DeadlineExceeded => ::http::StatusCode::REQUEST_TIMEOUT,
-                                    ::tonic::Code::Cancelled => ::http::StatusCode::REQUEST_TIMEOUT,
-                                    ::tonic::Code::Unknown => ::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    ::tonic::Code::DeadlineExceeded | ::tonic::Code::Cancelled => ::http::StatusCode::REQUEST_TIMEOUT,
                                     ::tonic::Code::OutOfRange => ::http::StatusCode::RANGE_NOT_SATISFIABLE,
-                                    ::tonic::Code::Internal => ::http::StatusCode::INTERNAL_SERVER_ERROR,
-                                    ::tonic::Code::DataLoss => ::http::StatusCode::INTERNAL_SERVER_ERROR,
-                                    ::tonic::Code::Aborted => ::http::StatusCode::CONFLICT,
+                                    _ => ::http::StatusCode::INTERNAL_SERVER_ERROR,
                                 };
 
                                 // Create JSON error response
