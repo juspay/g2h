@@ -316,16 +316,9 @@ impl BridgeGenerator {
             if let Some(path) = descriptor_path {
                 config.file_descriptor_set_path(path);
             }
-            #[cfg(feature = "validate")]
             {
                 return Ok(prost_validate_build::Builder::new()
                     .compile_protos_with_config(config, protos, includes)?);
-            }
-            #[cfg(not(feature = "validate"))]
-            {
-                return Err(
-                    "prost-validate support requires the 'validate' feature to be enabled".into(),
-                );
             }
         }
 
@@ -338,20 +331,11 @@ impl BridgeGenerator {
             .build_prost_config_with_descriptors(&file_descriptor_set);
 
         // Use prost-validate-build with the configured prost config
-        #[cfg(feature = "validate")]
-        {
-            prost_validate_build::Builder::new().compile_protos_with_config(
-                final_config,
-                protos,
-                includes,
-            )?;
-        }
-        #[cfg(not(feature = "validate"))]
-        {
-            return Err(
-                "prost-validate support requires the 'validate' feature to be enabled".into(),
-            );
-        }
+        prost_validate_build::Builder::new().compile_protos_with_config(
+            final_config,
+            protos,
+            includes,
+        )?;
 
         Ok(())
     }

@@ -19,7 +19,7 @@ rust-version = "1.78.0"
 
 [features]
 default = ["doc", "validate"]
-validate = ["prost-validate-build"]
+validate = []
 doc = []
 
 [dependencies]
@@ -33,4 +33,4 @@ heck = "0.5.0"
 
 cargo_metadata = "0.19.2"
 thiserror = "2.0.12"
-prost-validate-build = { version = "0.2.7", optional = true }
+prost-validate-build = "0.2.7"
