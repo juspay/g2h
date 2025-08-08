@@ -1,3 +1,4 @@
+use prost_validate::Validator;
 use tower::ServiceExt;
 
 mod hello_world {
@@ -13,6 +14,15 @@ impl hello_world::greeter_server::Greeter for Server {
         request: tonic::Request<hello_world::HelloRequest>,
     ) -> Result<tonic::Response<hello_world::HelloReply>, tonic::Status> {
         let req = request.into_inner();
+
+        // Validate the request using prost-validate
+        if let Err(e) = req.validate() {
+            return Err(tonic::Status::invalid_argument(format!(
+                "Validation failed: {}",
+                e
+            )));
+        }
+
         let greeting_type = req.greeting_type;
 
         let greeting = match greeting_type {
@@ -181,13 +191,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .header("Content-Type", "application/json")
         .body(success_payment_request.to_string())?;
 
-    let response3 = combined_router.oneshot(request3).await?;
+    let response3 = combined_router.clone().oneshot(request3).await?;
     let body3: axum::body::Body = response3.into_body();
     let body_bytes3 = axum::body::to_bytes(body3, usize::MAX).await?;
     let json_body3 = serde_json::from_slice::<serde_json::Value>(&body_bytes3)?;
 
     println!("Response: {}", serde_json::to_string_pretty(&json_body3)?);
     println!("✅ Status shows as 'SUCCESS' (string), empty fields omitted\n");
+
+    // Test 4: Greeting Service with String Enums and prost-validate
+    println!("🔸 Testing Greeting Service with String Enum Support:");
+    let greeting_request = serde_json::json!({
+        "name": "a",
+        "greeting_type": "CASUAL"  // String enum input
+    });
+
+    println!("Request: {}", greeting_request);
+
+    let request4 = http::Request::builder()
+        .method("POST")
+        .uri("/hello_world.Greeter/SayHello")
+        .header("Content-Type", "application/json")
+        .body(greeting_request.to_string())?;
+
+    let response4 = combined_router.clone().oneshot(request4).await?;
+    let body4: axum::body::Body = response4.into_body();
+    let body_bytes4 = axum::body::to_bytes(body4, usize::MAX).await?;
+    let json_body4 = serde_json::from_slice::<serde_json::Value>(&body_bytes4)?;
+
+    println!("Response: {}", serde_json::to_string_pretty(&json_body4)?);
+    println!("✅ Validation failed error\n");
 
     println!("🎯 Key Features Demonstrated:");
     println!("• String enum serialization: 'BAD_REQUEST_ERROR' instead of 21");

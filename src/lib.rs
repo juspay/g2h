@@ -276,6 +276,156 @@ impl BridgeGenerator {
         Ok(())
     }
 
+    /// Compile protobuf files with prost-validate support and string enum support.
+    ///
+    /// This method integrates with `prost-validate-build` to provide compile-time validation
+    /// of protobuf messages while maintaining all the string enum functionality provided
+    /// by the standard `compile_protos` method.
+    ///
+    /// ## Features
+    ///
+    /// - **Validation Support**: Automatically generates validation code for protobuf fields
+    ///   with `validate` annotations (e.g., `string.min_len`, `string.max_len`, etc.)
+    /// - **String Enum Support**: When enabled via `with_string_enums()`, allows JSON
+    ///   endpoints to accept both string and numeric enum values
+    /// - **HTTP Bridge Generation**: Creates Axum HTTP endpoints for all gRPC service methods
+    /// - **Error Handling**: Validation errors are properly converted to HTTP error responses
+    ///
+    /// ## Validation Rules
+    ///
+    /// The method supports all validation rules provided by the `validate.proto` definitions:
+    /// - String validation: `min_len`, `max_len`, `pattern` (regex), `prefix`, `suffix`
+    /// - Numeric validation: `min`, `max`, `gt`, `gte`, `lt`, `lte`
+    /// - Collection validation: `min_items`, `max_items`, `unique`
+    /// - Message validation: `required` fields, custom validation functions
+    ///
+    /// ## Proto Setup
+    ///
+    /// To use validation, your proto files need to import the validate definitions:
+    ///
+    /// ```protobuf
+    /// syntax = "proto3";
+    /// import "validate/validate.proto";
+    ///
+    /// message CreateUserRequest {
+    ///   string name = 1 [(validate.rules).string.min_len = 1, (validate.rules).string.max_len = 100];
+    ///   string email = 2 [(validate.rules).string.pattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"];
+    ///   int32 age = 3 [(validate.rules).int32.gte = 0, (validate.rules).int32.lte = 120];
+    /// }
+    /// ```
+    ///
+    /// ## Include Paths
+    ///
+    /// Make sure to include the path to the validate proto definitions in your includes:
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .compile_protos_with_validation(
+    ///         &["proto/service.proto"],
+    ///         &["proto", "path/to/validate/protos"]
+    ///     )?;
+    /// ```
+    ///
+    /// ## Runtime Behavior
+    ///
+    /// When validation is enabled:
+    /// 1. **Compile-time**: Validation code is generated for all annotated fields
+    /// 2. **Runtime**: HTTP requests are validated before being passed to your service
+    /// 3. **Error responses**: Invalid requests return HTTP 400 with detailed error messages
+    /// 4. **gRPC compatibility**: Validation also applies to direct gRPC calls
+    ///
+    /// ## Error Response Format
+    ///
+    /// Validation errors are returned as structured JSON:
+    ///
+    /// ```json
+    /// {
+    ///   "error": {
+    ///     "code": "INVALID_ARGUMENT",
+    ///     "message": "Validation failed: name must be between 1 and 100 characters"
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `protos` - Paths to the protobuf files to compile
+    /// * `includes` - Include directories for protobuf compilation (must include validate proto path)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful compilation, or an error if:
+    /// - Proto files cannot be found or parsed
+    /// - Validation rules are malformed
+    /// - Include paths are missing required dependencies
+    /// - Code generation fails
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .compile_protos_with_validation(
+    ///         &["proto/user_service.proto"],
+    ///         &["proto", "third_party/validate"]
+    ///     )?;
+    /// ```
+    ///
+    pub fn compile_protos_with_validation(
+        self,
+        protos: &[impl AsRef<std::path::Path>],
+        includes: &[impl AsRef<std::path::Path>],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some()
+        {
+            Some(prost_build::Config::new().load_fds(protos, includes)?)
+        } else {
+            None
+        };
+
+        // Write descriptor set if path is provided
+        if let (Some(ref path), Some(ref fds)) = (&self.descriptor_set_path, &file_descriptor_set) {
+            let bytes = fds.encode_to_vec();
+            std::fs::write(path, bytes)?;
+        }
+
+        if !self.enable_string_enums {
+            // Use prost-validate-build directly when string enums are not needed
+            let descriptor_path = self.descriptor_set_path.clone();
+            let mut config = self.build_prost_config();
+            // Add descriptor set path to config if provided
+            if let Some(path) = descriptor_path {
+                config.file_descriptor_set_path(path);
+            }
+            {
+                return Ok(prost_validate_build::Builder::new()
+                    .compile_protos_with_config(config, protos, includes)?);
+            }
+        }
+
+        // Build with automatic string enum support and validation
+        let file_descriptor_set = file_descriptor_set.unwrap(); // Safe because enable_string_enums is true
+        let mut generator = self;
+        generator.file_descriptor_set = Some(file_descriptor_set.clone());
+        let final_config = generator
+            .build_enum_config()
+            .build_prost_config_with_descriptors(&file_descriptor_set);
+
+        // Use prost-validate-build with the configured prost config
+        prost_validate_build::Builder::new().compile_protos_with_config(
+            final_config,
+            protos,
+            includes,
+        )?;
+
+        Ok(())
+    }
+
     ///
     /// Creates an EnumConfig instance for advanced enum configuration.
     ///
