@@ -277,6 +277,79 @@ impl BridgeGenerator {
     }
 
     ///
+    /// Compile protobuf files with prost-validate support and string enum support.
+    /// This method integrates with prost-validate-build while maintaining string enum functionality.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .compile_protos_with_validation(&["proto/service.proto"], &["proto", "../prost-validate-types/proto"])?;
+    /// ```
+    ///
+    pub fn compile_protos_with_validation(
+        self,
+        protos: &[impl AsRef<std::path::Path>],
+        includes: &[impl AsRef<std::path::Path>],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some()
+        {
+            Some(prost_build::Config::new().load_fds(protos, includes)?)
+        } else {
+            None
+        };
+
+        // Write descriptor set if path is provided
+        if let (Some(ref path), Some(ref fds)) = (&self.descriptor_set_path, &file_descriptor_set) {
+            let bytes = fds.encode_to_vec();
+            std::fs::write(path, bytes)?;
+        }
+
+        if !self.enable_string_enums {
+            // Use prost-validate-build directly when string enums are not needed
+            let descriptor_path = self.descriptor_set_path.clone();
+            let mut config = self.build_prost_config();
+            // Add descriptor set path to config if provided
+            if let Some(path) = descriptor_path {
+                config.file_descriptor_set_path(path);
+            }
+            #[cfg(feature = "validate")]
+            {
+                return Ok(prost_validate_build::Builder::new()
+                    .compile_protos_with_config(config, protos, includes)?);
+            }
+            #[cfg(not(feature = "validate"))]
+            {
+                return Err("prost-validate support requires the 'validate' feature to be enabled".into());
+            }
+        }
+
+        // Build with automatic string enum support and validation
+        let file_descriptor_set = file_descriptor_set.unwrap(); // Safe because enable_string_enums is true
+        let mut generator = self;
+        generator.file_descriptor_set = Some(file_descriptor_set.clone());
+        let final_config = generator
+            .build_enum_config()
+            .build_prost_config_with_descriptors(&file_descriptor_set);
+
+        // Use prost-validate-build with the configured prost config
+        #[cfg(feature = "validate")]
+        {
+            prost_validate_build::Builder::new()
+                .compile_protos_with_config(final_config, protos, includes)?;
+        }
+        #[cfg(not(feature = "validate"))]
+        {
+            return Err("prost-validate support requires the 'validate' feature to be enabled".into());
+        }
+
+        Ok(())
+    }
+
+    ///
     /// Creates an EnumConfig instance for advanced enum configuration.
     ///
     /// This method returns an `EnumConfig` that can build a `prost_build::Config`
