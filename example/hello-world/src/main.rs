@@ -1,5 +1,5 @@
-use tower::ServiceExt;
 use prost_validate::Validator;
+use tower::ServiceExt;
 
 mod hello_world {
     tonic::include_proto!("hello_world");
@@ -14,12 +14,15 @@ impl hello_world::greeter_server::Greeter for Server {
         request: tonic::Request<hello_world::HelloRequest>,
     ) -> Result<tonic::Response<hello_world::HelloReply>, tonic::Status> {
         let req = request.into_inner();
-        
+
         // Validate the request using prost-validate
         if let Err(e) = req.validate() {
-            return Err(tonic::Status::invalid_argument(format!("Validation failed: {}", e)));
+            return Err(tonic::Status::invalid_argument(format!(
+                "Validation failed: {}",
+                e
+            )));
         }
-        
+
         let greeting_type = req.greeting_type;
 
         let greeting = match greeting_type {

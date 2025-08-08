@@ -323,7 +323,9 @@ impl BridgeGenerator {
             }
             #[cfg(not(feature = "validate"))]
             {
-                return Err("prost-validate support requires the 'validate' feature to be enabled".into());
+                return Err(
+                    "prost-validate support requires the 'validate' feature to be enabled".into(),
+                );
             }
         }
 
@@ -338,12 +340,17 @@ impl BridgeGenerator {
         // Use prost-validate-build with the configured prost config
         #[cfg(feature = "validate")]
         {
-            prost_validate_build::Builder::new()
-                .compile_protos_with_config(final_config, protos, includes)?;
+            prost_validate_build::Builder::new().compile_protos_with_config(
+                final_config,
+                protos,
+                includes,
+            )?;
         }
         #[cfg(not(feature = "validate"))]
         {
-            return Err("prost-validate support requires the 'validate' feature to be enabled".into());
+            return Err(
+                "prost-validate support requires the 'validate' feature to be enabled".into(),
+            );
         }
 
         Ok(())
