@@ -361,16 +361,16 @@ impl BridgeGenerator {
     ///
     /// ```rust,ignore
     /// let mut config = Config::new();
-    /// 
+    ///
     /// // Custom derive attributes
     /// config.type_attribute(".", "#[derive(Clone, PartialEq, Eq, Hash)]");
-    /// 
+    ///
     /// // Custom field transformations
     /// config.field_attribute("*.created_at", "#[serde(with = \"timestamp_format\")]");
-    /// 
+    ///
     /// // Custom message attributes
     /// config.message_attribute("User", "#[derive(sqlx::FromRow)]");
-    /// 
+    ///
     /// // Custom enum handling
     /// config.enum_attribute("Status", "#[derive(strum::EnumString)]");
     ///
@@ -418,7 +418,7 @@ impl BridgeGenerator {
 
         // Apply string enum support and skip nulls support when string enums are enabled
         let file_descriptor_set = file_descriptor_set.unwrap(); // Safe because enable_string_enums is true
-        
+
         // Store the file descriptor set for the service generator
         self.file_descriptor_set = Some(file_descriptor_set.clone());
 
