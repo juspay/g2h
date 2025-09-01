@@ -276,6 +276,167 @@ impl BridgeGenerator {
         Ok(())
     }
 
+    /// Compile protobuf files with a custom prost_build::Config while applying all BridgeGenerator functionality.
+    ///
+    /// This method accepts a pre-configured `prost_build::Config` and enhances it with all the
+    /// BridgeGenerator features including HTTP bridge generation, string enum support (if enabled),
+    /// and skip nulls support. This provides maximum flexibility for users who need custom
+    /// protobuf compilation configuration while still getting all the g2h functionality.
+    ///
+    /// ## Features Applied
+    ///
+    /// - **HTTP Bridge Generation**: Creates Axum HTTP endpoints for all gRPC service methods
+    /// - **Service Generator**: Sets the `BridgeGenerator` as the service generator on the provided config
+    /// - **String Enum Support**: When enabled via `with_string_enums()`, automatically detects enum fields
+    ///   and adds appropriate serde serialization/deserialization functions
+    /// - **Skip Nulls Support**: Adds `skip_serializing_if` attributes for cleaner JSON output
+    /// - **File Descriptor Set**: Handles loading and optionally writing file descriptor sets (if configured)
+    /// - **Custom Configuration**: Preserves all existing configuration on the provided config
+    ///
+    /// ## Configuration Preservation
+    ///
+    /// The method preserves and enhances your existing `prost_build::Config` settings:
+    /// - Type attributes (e.g., `#[derive(Clone, PartialEq)]`)
+    /// - Field attributes (e.g., custom serde annotations)
+    /// - Message attributes
+    /// - Enum attributes
+    /// - Custom type mappings
+    /// - Include paths and protoc settings
+    ///
+    /// ## String Enum Integration
+    ///
+    /// When string enums are enabled, the method will:
+    /// 1. Automatically detect all enum fields in your protobuf messages
+    /// 2. Generate field-specific serialization/deserialization functions
+    /// 3. Add appropriate serde attributes to the config
+    /// 4. Ensure enum fields accept both string and numeric values in JSON
+    ///
+    /// ## Skip Nulls Integration
+    ///
+    /// The method automatically adds `skip_serializing_if` attributes for:
+    /// - Optional fields: `skip_serializing_if = "Option::is_none"`
+    /// - String fields: `skip_serializing_if = "String::is_empty"`
+    /// - This results in cleaner JSON output without null/empty values
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - A pre-configured `prost_build::Config` that will be enhanced with BridgeGenerator functionality
+    /// * `protos` - Paths to the protobuf files to compile
+    /// * `includes` - Include directories for protobuf compilation
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful compilation, or an error if:
+    /// - Proto files cannot be found or parsed
+    /// - Configuration conflicts arise
+    /// - Code generation fails
+    /// - File I/O operations fail
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use g2h::BridgeGenerator;
+    /// use prost_build::Config;
+    ///
+    /// // Create a custom config with your specific requirements
+    /// let mut custom_config = Config::new();
+    /// custom_config.type_attribute(".", "#[derive(Clone, PartialEq)]");
+    /// custom_config.field_attribute("MyMessage.timestamp", "#[serde(with = \"custom_time_format\")]");
+    /// custom_config.message_attribute("ErrorResponse", "#[derive(thiserror::Error)]");
+    ///
+    /// // Apply BridgeGenerator functionality to your custom config
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .file_descriptor_set_path("target/descriptors.bin")
+    ///     .compile_protos_with_config(
+    ///         custom_config,
+    ///         &["proto/service.proto", "proto/types.proto"],
+    ///         &["proto", "third_party/googleapis"]
+    ///     )?;
+    /// ```
+    ///
+    /// ## Advanced Usage
+    ///
+    /// You can combine this with other prost features:
+    ///
+    /// ```rust,ignore
+    /// let mut config = Config::new();
+    ///
+    /// // Custom derive attributes
+    /// config.type_attribute(".", "#[derive(Clone, PartialEq, Eq, Hash)]");
+    ///
+    /// // Custom field transformations
+    /// config.field_attribute("*.created_at", "#[serde(with = \"timestamp_format\")]");
+    ///
+    /// // Custom message attributes
+    /// config.message_attribute("User", "#[derive(sqlx::FromRow)]");
+    ///
+    /// // Custom enum handling
+    /// config.enum_attribute("Status", "#[derive(strum::EnumString)]");
+    ///
+    /// BridgeGenerator::with_tonic_build()
+    ///     .with_string_enums()
+    ///     .compile_protos_with_config(config, &["proto/api.proto"], &["proto"])?;
+    /// ```
+    ///
+    /// This approach gives you complete control over protobuf code generation while automatically
+    /// getting HTTP bridge functionality, string enum support, and clean JSON serialization.
+    ///
+    pub fn compile_protos_with_config(
+        mut self,
+        mut config: prost_build::Config,
+        protos: &[impl AsRef<std::path::Path>],
+        includes: &[impl AsRef<std::path::Path>],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Load file descriptor set if needed for string enums or descriptor set writing
+        let file_descriptor_set = if self.enable_string_enums || self.descriptor_set_path.is_some()
+        {
+            Some(prost_build::Config::new().load_fds(protos, includes)?)
+        } else {
+            None
+        };
+
+        // Write descriptor set to file if path is configured
+        if let (Some(ref path), Some(ref fds)) = (&self.descriptor_set_path, &file_descriptor_set) {
+            let bytes = fds.encode_to_vec();
+            std::fs::write(path, bytes)?;
+        }
+
+        // Add default serde derives if not already present
+        config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
+
+        // Add descriptor set path to config if provided
+        if let Some(ref path) = self.descriptor_set_path {
+            config.file_descriptor_set_path(path);
+        }
+
+        // If string enums are not enabled, set the service generator and compile directly
+        if !self.enable_string_enums {
+            config.service_generator(Box::new(self));
+            return Ok(config.compile_protos(protos, includes)?);
+        }
+
+        // Apply string enum support and skip nulls support when string enums are enabled
+        let file_descriptor_set = file_descriptor_set.unwrap(); // Safe because enable_string_enums is true
+
+        // Store the file descriptor set for the service generator
+        self.file_descriptor_set = Some(file_descriptor_set.clone());
+
+        // Apply enum string support by detecting enum fields automatically
+        config = EnumConfig::add_enum_string_support_static(config, &file_descriptor_set);
+
+        // Add skip nulls support by default
+        config = EnumConfig::add_skip_nulls_support_static(config, &file_descriptor_set);
+
+        // Set the service generator with the file descriptor set at the end
+        config.service_generator(Box::new(self));
+
+        // Compile with the fully enhanced config
+        config.compile_protos(protos, includes)?;
+
+        Ok(())
+    }
+
     ///
     /// Creates an EnumConfig instance for advanced enum configuration.
     ///
