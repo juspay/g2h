@@ -56,9 +56,9 @@ edition = "2021"
 [dependencies]
 axum = "0.7.0"
 g2h = "0.1.0"
-prost = "0.13.5"
+prost = "0.14"
 tokio = { version = "1.35.0", features = ["full"] }
-tonic = "0.13.0"
+tonic = "0.14.0"
 serde = { version = "1.0", features = ["derive"] }
 chrono = "0.4.31"
 

@@ -456,7 +456,7 @@ impl BridgeGenerator {
     /// It's a shorthand for `BridgeGenerator::new(tonic_build::configure().service_generator())`.
     ///
     pub fn with_tonic_build() -> Self {
-        Self::new(tonic_build::configure().service_generator())
+        Self::new(tonic_prost_build::configure().service_generator())
     }
 
     ///

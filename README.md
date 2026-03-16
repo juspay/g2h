@@ -22,8 +22,8 @@
 ```toml
 # Cargo.toml
 [dependencies]
-tonic = "0.13.0"
-prost = "0.13.5"
+tonic = "0.14.0"
+prost = "0.14"
 axum = "0.8.3"
 http = "1.3.1"
 serde = { version = "1.0", features = ["derive"] }
